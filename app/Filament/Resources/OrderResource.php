@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\OrderResource\Pages;
 use App\Models\Order;
 use App\Models\StudioImage;
+use App\Models\ImageCard;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -31,11 +32,41 @@ class OrderResource extends Resource
                 ->schema([
                     Forms\Components\Grid::make(3)
                         ->schema([
+                            Forms\Components\Select::make('category')
+                                ->label('Category')
+                                ->options([
+                                    'studio_image' => 'Studio Image',
+                                    'image_card' => 'Image Card',
+                                ])
+                                ->reactive()
+                                ->required()
+                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
+                                    // Reset dependent fields when category changes
+                                    $set('studio_image_id', null);
+                                    $set('image_card_id', null);
+                                    $set('is_instant', false);
+                                    $set('include_soft_copy', false);
+                                    $set('price', 0);
+                                    static::updateOrderTotalsFromItem($set, $get);
+                                }),
+
                             Forms\Components\Select::make('studio_image_id')
                                 ->label('Studio Image')
                                 ->options(StudioImage::all()->pluck('image_size', 'id'))
                                 ->reactive()
                                 ->required()
+                                ->visible(fn (callable $get) => $get('category') === 'studio_image')
+                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
+                                    static::updateItemPrice($set, $get);
+                                    static::updateOrderTotalsFromItem($set, $get);
+                                }),
+
+                            Forms\Components\Select::make('image_card_id')
+                                ->label('Image Card')
+                                ->options(ImageCard::all()->pluck('card_size', 'id'))
+                                ->reactive()
+                                ->required()
+                                ->visible(fn (callable $get) => $get('category') === 'image_card')
                                 ->afterStateUpdated(function (callable $set, callable $get, $state) {
                                     static::updateItemPrice($set, $get);
                                     static::updateOrderTotalsFromItem($set, $get);
@@ -44,6 +75,17 @@ class OrderResource extends Resource
                             Forms\Components\Checkbox::make('is_instant')
                                 ->label('Instant Delivery')
                                 ->reactive()
+                                ->visible(function (callable $get) {
+                                    $category = $get('category');
+                                    if ($category === 'studio_image') {
+                                        $studioImage = StudioImage::find($get('studio_image_id'));
+                                        return $studioImage && $studioImage->instant_price > 0;
+                                    } elseif ($category === 'image_card') {
+                                        $imageCard = ImageCard::find($get('image_card_id'));
+                                        return $imageCard && $imageCard->instant_price > 0;
+                                    }
+                                    return false;
+                                })
                                 ->afterStateUpdated(function (callable $set, callable $get, $state) {
                                     static::updateItemPrice($set, $get);
                                     static::updateOrderTotalsFromItem($set, $get);
@@ -52,6 +94,14 @@ class OrderResource extends Resource
                             Forms\Components\Checkbox::make('include_soft_copy')
                                 ->label('Soft Copy')
                                 ->reactive()
+                                ->visible(function (callable $get) {
+                                    $category = $get('category');
+                                    if ($category === 'studio_image') {
+                                        $studioImage = StudioImage::find($get('studio_image_id'));
+                                        return $studioImage && $studioImage->soft_copy_price > 0;
+                                    }
+                                    return false;
+                                })
                                 ->afterStateUpdated(function (callable $set, callable $get, $state) {
                                     static::updateItemPrice($set, $get);
                                     static::updateOrderTotalsFromItem($set, $get);
@@ -107,18 +157,32 @@ class OrderResource extends Resource
 
     protected static function updateItemPrice(callable $set, callable $get): void
     {
-        $studioImage = StudioImage::find($get('studio_image_id'));
+        $category = $get('category');
         $price = 0;
 
-        if ($studioImage) {
-            $price = $studioImage->price ?? 0;
+        if ($category === 'studio_image') {
+            $studioImage = StudioImage::find($get('studio_image_id'));
+            
+            if ($studioImage) {
+                $price = $studioImage->price ?? 0;
 
-            if ($get('is_instant')) {
-                $price += $studioImage->instant_price ?? 0;
+                if ($get('is_instant')) {
+                    $price += $studioImage->instant_price ?? 0;
+                }
+
+                if ($get('include_soft_copy')) {
+                    $price += $studioImage->soft_copy_price ?? 0;
+                }
             }
+        } elseif ($category === 'image_card') {
+            $imageCard = ImageCard::find($get('image_card_id'));
+            
+            if ($imageCard) {
+                $price = $imageCard->price ?? 0;
 
-            if ($get('include_soft_copy')) {
-                $price += $studioImage->soft_copy_price ?? 0;
+                if ($get('is_instant')) {
+                    $price += $imageCard->instant_price ?? 0;
+                }
             }
         }
 
