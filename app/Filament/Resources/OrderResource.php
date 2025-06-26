@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
 use App\Models\Order;
+use App\Models\StudioImage;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -22,48 +23,48 @@ class OrderResource extends Resource
             Forms\Components\TextInput::make('name')
                 ->required(),
 
-            Forms\Components\HasManyRepeater::make('items')
-                ->relationship('items')
-                ->schema([
-                    Forms\Components\Select::make('studio_image_id')
-                        ->label('Studio Image')
-                        ->relationship('studioImage', 'image_size')
-                        ->required()
-                        ->reactive()
-                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                            static::updateItemPrice($set, $get);
-                        }),
-
-                    Forms\Components\Checkbox::make('is_instant')
-                        ->label('Add Instant Delivery')
-                        ->reactive()
-                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                            static::updateItemPrice($set, $get);
-                        }),
-
-                    Forms\Components\Checkbox::make('include_soft_copy')
-                        ->label('Include Soft Copy')
-                        ->reactive()
-                        ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                            static::updateItemPrice($set, $get);
-                        }),
-
-                    Forms\Components\TextInput::make('price')
-                        ->label('Item Price')
-                        ->required()
-                        ->numeric()
-                        ->disabled()
-                        ->dehydrated(true),
-                ])
-                ->createItemButtonLabel('Add Order Item')
+            Forms\Components\Repeater::make('items')
+                ->label('Order Items')
                 ->columns(1)
-                ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                    static::updateOrderTotals($set, $get);
-                })
+                ->columnSpan('full')
                 ->default([])
-                ->mutateRelationshipDataBeforeCreateUsing(function (array $data) {
-                    return isset($data['studio_image_id']) ? $data : null;
-                }),
+                ->schema([
+                    Forms\Components\Grid::make(3)
+                        ->schema([
+                            Forms\Components\Select::make('studio_image_id')
+                                ->label('Studio Image')
+                                ->options(StudioImage::all()->pluck('image_size', 'id'))
+                                ->reactive()
+                                ->required()
+                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
+                                    static::updateItemPrice($set, $get);
+                                    static::updateOrderTotalsFromItem($set, $get);
+                                }),
+
+                            Forms\Components\Checkbox::make('is_instant')
+                                ->label('Instant Delivery')
+                                ->reactive()
+                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
+                                    static::updateItemPrice($set, $get);
+                                    static::updateOrderTotalsFromItem($set, $get);
+                                }),
+
+                            Forms\Components\Checkbox::make('include_soft_copy')
+                                ->label('Soft Copy')
+                                ->reactive()
+                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
+                                    static::updateItemPrice($set, $get);
+                                    static::updateOrderTotalsFromItem($set, $get);
+                                }),
+
+                            Forms\Components\TextInput::make('price')
+                                ->label('Item Price')
+                                ->numeric()
+                                ->disabled()
+                                ->dehydrated(true)
+                                ->columnSpanFull(),
+                        ]),
+                ]),
 
             Forms\Components\TextInput::make('subtotal')
                 ->label('Subtotal (Before Discount)')
@@ -76,9 +77,7 @@ class OrderResource extends Resource
                 ->numeric()
                 ->default(0)
                 ->reactive()
-                ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                    static::updateOrderTotals($set, $get);
-                }),
+                ->afterStateUpdated(fn ($state, callable $set, callable $get) => static::updateOrderTotals($set, $get)),
 
             Forms\Components\TextInput::make('total_price')
                 ->label('Total After Discount')
@@ -91,9 +90,7 @@ class OrderResource extends Resource
                 ->numeric()
                 ->default(0)
                 ->reactive()
-                ->afterStateUpdated(function ($state, callable $set, callable $get) {
-                    static::updateOrderTotals($set, $get);
-                }),
+                ->afterStateUpdated(fn ($state, callable $set, callable $get) => static::updateOrderTotals($set, $get)),
 
             Forms\Components\TextInput::make('remaining_amount')
                 ->label('Remaining Amount')
@@ -110,32 +107,54 @@ class OrderResource extends Resource
 
     protected static function updateItemPrice(callable $set, callable $get): void
     {
-        $studioImageId = $get('studio_image_id');
-        $studioImage = \App\Models\StudioImage::find($studioImageId);
+        $studioImage = StudioImage::find($get('studio_image_id'));
+        $price = 0;
 
-        if (!$studioImage) {
-            $set('price', 0);
-            return;
-        }
+        if ($studioImage) {
+            $price = $studioImage->price ?? 0;
 
-        $price = $studioImage->price;
+            if ($get('is_instant')) {
+                $price += $studioImage->instant_price ?? 0;
+            }
 
-        if ($get('is_instant')) {
-            $price += $studioImage->instant_price ?? 0;
-        }
-
-        if ($get('include_soft_copy')) {
-            $price += $studioImage->soft_copy_price ?? 0;
+            if ($get('include_soft_copy')) {
+                $price += $studioImage->soft_copy_price ?? 0;
+            }
         }
 
         $set('price', number_format($price, 2, '.', ''));
     }
 
+    protected static function updateOrderTotalsFromItem(callable $set, callable $get): void
+    {
+        // Get all items from the form state
+        $items = $get('../../items') ?? [];
+        $subtotal = 0;
+
+        foreach ($items as $item) {
+            $subtotal += floatval($item['price'] ?? 0);
+        }
+
+        $discount = floatval($get('../../discount') ?? 0);
+        $paid = floatval($get('../../paid_amount') ?? 0);
+
+        $total = max(0, $subtotal - $discount);
+        $remaining = max(0, $total - $paid);
+
+        $set('../../subtotal', number_format($subtotal, 2, '.', ''));
+        $set('../../total_price', number_format($total, 2, '.', ''));
+        $set('../../remaining_amount', number_format($remaining, 2, '.', ''));
+    }
+
     protected static function updateOrderTotals(callable $set, callable $get): void
     {
         $items = $get('items') ?? [];
+        $subtotal = 0;
 
-        $subtotal = collect($items)->sum('price');
+        foreach ($items as $item) {
+            $subtotal += floatval($item['price'] ?? 0);
+        }
+
         $discount = floatval($get('discount') ?? 0);
         $paid = floatval($get('paid_amount') ?? 0);
 
@@ -151,8 +170,7 @@ class OrderResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('name')
-                    ->searchable(),
+                Tables\Columns\TextColumn::make('name')->searchable(),
 
                 Tables\Columns\TextColumn::make('subtotal')
                     ->label('Subtotal')
