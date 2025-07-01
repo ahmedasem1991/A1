@@ -19,6 +19,11 @@ class ImageCardResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
+     // This is the parent category in the sidebar
+     protected static ?string $navigationGroup = '⚙️ Studio Settings';
+
+ // This is the resource label under that group
+//  protected static ?string $navigationLabel = 'Studio';
     public static function form(Form $form): Form
     {
         return $form
