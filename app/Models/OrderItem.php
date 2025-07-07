@@ -4,22 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OrderItem extends Model
 {
     use HasFactory;
-    protected $fillable = [
-        'order_id',
-        'studio_image_id',
-        'is_instant',
-        'include_soft_copy',
-        'price',
-    ];
+ protected $guarded = [];
 
-    public function order()
-    {
-        return $this->belongsTo(Order::class);
-    }
+
+  // app/Models/OrderItem.php
+public function order(): BelongsTo
+{
+    return $this->belongsTo(Order::class);
+}
 
     public function studioImage()
     {

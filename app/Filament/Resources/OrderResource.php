@@ -15,190 +15,141 @@ use Filament\Tables\Table;
 class OrderResource extends Resource
 {
     protected static ?string $model = Order::class;
-
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\TextInput::make('name')
-                ->required(),
+            Forms\Components\TextInput::make('name')->required(),
 
-            Forms\Components\Repeater::make('items')
+            Forms\Components\Repeater::make('orderItems')
                 ->label('Order Items')
+                ->relationship('orderItems')
                 ->columns(1)
                 ->columnSpan('full')
                 ->default([])
+                ->collapsed(false)
+                ->itemLabel(fn (array $state) => match ($state['category'] ?? null) {
+                    'studio_image' => 'Studio image',
+                    'image_card' => 'Image card',
+                    default => 'Item',
+                })
                 ->schema([
-                    Forms\Components\Grid::make(3)
-                        ->schema([
-                            Forms\Components\Select::make('category')
-                                ->label('Category')
-                                ->options([
-                                    'studio_image' => 'Studio Image',
-                                    'image_card' => 'Image Card',
-                                ])
-                                ->reactive()
-                                ->required()
-                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
-                                    // Reset dependent fields when category changes
-                                    $set('studio_image_id', null);
-                                    $set('image_card_id', null);
-                                    $set('is_instant', false);
-                                    $set('include_soft_copy', false);
-                                    $set('price', 0);
-                                    static::updateOrderTotalsFromItem($set, $get);
-                                }),
+                    Forms\Components\Grid::make(3)->schema([
+                        Forms\Components\Select::make('category')
+                            ->label('Category')
+                            ->options([
+                                'studio_image' => 'Studio Image',
+                                'image_card' => 'Image Card',
+                            ])
+                            ->reactive()
+                            ->required()
+                            ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
 
-                            Forms\Components\Select::make('studio_image_id')
-                                ->label('Studio Image')
-                                ->options(StudioImage::all()->pluck('image_size', 'id'))
-                                ->reactive()
-                                ->required()
-                                ->visible(fn (callable $get) => $get('category') === 'studio_image')
-                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
-                                    static::updateItemPrice($set, $get);
-                                    static::updateOrderTotalsFromItem($set, $get);
-                                }),
+                        Forms\Components\Select::make('studio_image_id')
+                            ->label('Studio Image')
+                            ->options(StudioImage::all()->pluck('image_size', 'id'))
+                            ->reactive()
+                            ->required()
+                            ->visible(fn ($get) => $get('category') === 'studio_image')
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                            Forms\Components\Select::make('image_card_id')
-                                ->label('Image Card')
-                                ->options(ImageCard::all()->pluck('card_size', 'id'))
-                                ->reactive()
-                                ->required()
-                                ->visible(fn (callable $get) => $get('category') === 'image_card')
-                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
-                                    static::updateItemPrice($set, $get);
-                                    static::updateOrderTotalsFromItem($set, $get);
-                                }),
+                        Forms\Components\Select::make('image_card_id')
+                            ->label('Image Card')
+                            ->options(ImageCard::all()->pluck('card_size', 'id'))
+                            ->reactive()
+                            ->required()
+                            ->visible(fn ($get) => $get('category') === 'image_card')
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                            Forms\Components\Checkbox::make('is_instant')
-                                ->label('Instant Delivery')
-                                ->reactive()
-                                ->visible(function (callable $get) {
-                                    $category = $get('category');
-                                    if ($category === 'studio_image') {
-                                        $studioImage = StudioImage::find($get('studio_image_id'));
-                                        return $studioImage && $studioImage->instant_price > 0;
-                                    } elseif ($category === 'image_card') {
-                                        $imageCard = ImageCard::find($get('image_card_id'));
-                                        return $imageCard && $imageCard->instant_price > 0;
-                                    }
-                                    return false;
-                                })
-                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
-                                    static::updateItemPrice($set, $get);
-                                    static::updateOrderTotalsFromItem($set, $get);
-                                }),
+                        Forms\Components\Checkbox::make('is_instant')
+                            ->label('Instant Delivery')
+                            ->reactive()
+                            ->visible(fn ($get) => static::shouldShowInstant($get))
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                            Forms\Components\Checkbox::make('include_soft_copy')
-                                ->label('Soft Copy')
-                                ->reactive()
-                                ->visible(function (callable $get) {
-                                    $category = $get('category');
-                                    if ($category === 'studio_image') {
-                                        $studioImage = StudioImage::find($get('studio_image_id'));
-                                        return $studioImage && $studioImage->soft_copy_price > 0;
-                                    }
-                                    return false;
-                                })
-                                ->afterStateUpdated(function (callable $set, callable $get, $state) {
-                                    static::updateItemPrice($set, $get);
-                                    static::updateOrderTotalsFromItem($set, $get);
-                                }),
+                        Forms\Components\Checkbox::make('include_soft_copy')
+                            ->label('Soft Copy')
+                            ->reactive()
+                            ->visible(fn ($get) => static::shouldShowSoftCopy($get))
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                            Forms\Components\TextInput::make('price')
-                                ->label('Item Price')
-                                ->numeric()
-                                ->disabled()
-                                ->dehydrated(true)
-                                ->columnSpanFull(),
-                        ]),
+                        Forms\Components\TextInput::make('price')
+                            ->label('Item Price')
+                            ->numeric()
+                            ->disabled()
+                            ->dehydrated(true)
+                            ->columnSpanFull(),
+                    ]),
                 ]),
 
-            Forms\Components\TextInput::make('subtotal')
-                ->label('Subtotal (Before Discount)')
-                ->numeric()
-                ->disabled()
-                ->dehydrated(true),
-
-            Forms\Components\TextInput::make('discount')
-                ->label('Discount')
-                ->numeric()
-                ->default(0)
-                ->reactive()
-                ->afterStateUpdated(fn ($state, callable $set, callable $get) => static::updateOrderTotals($set, $get)),
-
-            Forms\Components\TextInput::make('total_price')
-                ->label('Total After Discount')
-                ->numeric()
-                ->disabled()
-                ->dehydrated(true),
-
-            Forms\Components\TextInput::make('paid_amount')
-                ->label('Paid Amount')
-                ->numeric()
-                ->default(0)
-                ->reactive()
-                ->afterStateUpdated(fn ($state, callable $set, callable $get) => static::updateOrderTotals($set, $get)),
-
-            Forms\Components\TextInput::make('remaining_amount')
-                ->label('Remaining Amount')
-                ->numeric()
-                ->disabled()
-                ->dehydrated(true),
+            Forms\Components\TextInput::make('subtotal')->numeric()->disabled()->dehydrated(true),
+            Forms\Components\TextInput::make('discount')->numeric()->default(0)->reactive()
+                ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
+            Forms\Components\TextInput::make('total_price')->numeric()->disabled()->dehydrated(true),
+            Forms\Components\TextInput::make('paid_amount')->numeric()->default(0)->reactive()
+                ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
+            Forms\Components\TextInput::make('remaining_amount')->numeric()->disabled()->dehydrated(true),
         ]);
     }
 
-    public static function afterSave(Form $form): void
+    protected static function resetItemFields(callable $set, callable $get): void
     {
-        $form->getRecord()->calculateTotals();
+        $set('studio_image_id', null);
+        $set('image_card_id', null);
+        $set('is_instant', false);
+        $set('include_soft_copy', false);
+        $set('price', 0);
+
+        static::updateOrderTotalsFromItem($set, $get);
     }
 
-    protected static function updateItemPrice(callable $set, callable $get): void
+    protected static function updateItemData(callable $set, callable $get): void
     {
         $category = $get('category');
         $price = 0;
 
-        if ($category === 'studio_image') {
-            $studioImage = StudioImage::find($get('studio_image_id'));
-            
-            if ($studioImage) {
-                $price = $studioImage->price ?? 0;
-
-                if ($get('is_instant')) {
-                    $price += $studioImage->instant_price ?? 0;
-                }
-
-                if ($get('include_soft_copy')) {
-                    $price += $studioImage->soft_copy_price ?? 0;
-                }
+        if ($category === 'studio_image' && $id = $get('studio_image_id')) {
+            $item = StudioImage::find($id);
+            if ($item) {
+                $price += $item->price;
+                if ($get('is_instant')) $price += $item->instant_price ?? 0;
+                if ($get('include_soft_copy')) $price += $item->soft_copy_price ?? 0;
             }
-        } elseif ($category === 'image_card') {
-            $imageCard = ImageCard::find($get('image_card_id'));
-            
-            if ($imageCard) {
-                $price = $imageCard->price ?? 0;
-
-                if ($get('is_instant')) {
-                    $price += $imageCard->instant_price ?? 0;
-                }
+        } elseif ($category === 'image_card' && $id = $get('image_card_id')) {
+            $item = ImageCard::find($id);
+            if ($item) {
+                $price += $item->price;
+                if ($get('is_instant')) $price += $item->instant_price ?? 0;
             }
         }
 
         $set('price', number_format($price, 2, '.', ''));
+        static::updateOrderTotalsFromItem($set, $get);
+    }
+
+    protected static function shouldShowInstant(callable $get): bool
+    {
+        $category = $get('category');
+        if ($category === 'studio_image') {
+            return optional(StudioImage::find($get('studio_image_id')))->instant_price > 0;
+        }
+        if ($category === 'image_card') {
+            return optional(ImageCard::find($get('image_card_id')))->instant_price > 0;
+        }
+        return false;
+    }
+
+    protected static function shouldShowSoftCopy(callable $get): bool
+    {
+        if ($get('category') !== 'studio_image') return false;
+        return optional(StudioImage::find($get('studio_image_id')))->soft_copy_price > 0;
     }
 
     protected static function updateOrderTotalsFromItem(callable $set, callable $get): void
     {
-        // Get all items from the form state
-        $items = $get('../../items') ?? [];
-        $subtotal = 0;
-
-        foreach ($items as $item) {
-            $subtotal += floatval($item['price'] ?? 0);
-        }
-
+        $items = $get('../../orderItems') ?? [];
+        $subtotal = collect($items)->sum(fn ($item) => floatval($item['price'] ?? 0));
         $discount = floatval($get('../../discount') ?? 0);
         $paid = floatval($get('../../paid_amount') ?? 0);
 
@@ -212,13 +163,8 @@ class OrderResource extends Resource
 
     protected static function updateOrderTotals(callable $set, callable $get): void
     {
-        $items = $get('items') ?? [];
-        $subtotal = 0;
-
-        foreach ($items as $item) {
-            $subtotal += floatval($item['price'] ?? 0);
-        }
-
+        $items = $get('orderItems') ?? [];
+        $subtotal = collect($items)->sum(fn ($item) => floatval($item['price'] ?? 0));
         $discount = floatval($get('discount') ?? 0);
         $paid = floatval($get('paid_amount') ?? 0);
 
@@ -234,31 +180,14 @@ class OrderResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('id')->searchable(),
                 Tables\Columns\TextColumn::make('name')->searchable(),
-
-                Tables\Columns\TextColumn::make('subtotal')
-                    ->label('Subtotal')
-                    ->money('EGP'),
-
-                Tables\Columns\TextColumn::make('discount')
-                    ->label('Discount')
-                    ->money('EGP'),
-
-                Tables\Columns\TextColumn::make('total_price')
-                    ->label('Total')
-                    ->money('EGP'),
-
-                Tables\Columns\TextColumn::make('paid_amount')
-                    ->label('Paid')
-                    ->money('EGP'),
-
-                Tables\Columns\TextColumn::make('remaining_amount')
-                    ->label('Remaining')
-                    ->money('EGP'),
-
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('subtotal')->label('Subtotal')->money('EGP'),
+                Tables\Columns\TextColumn::make('discount')->label('Discount')->money('EGP'),
+                Tables\Columns\TextColumn::make('total_price')->label('Total')->money('EGP'),
+                Tables\Columns\TextColumn::make('paid_amount')->label('Paid')->money('EGP'),
+                Tables\Columns\TextColumn::make('remaining_amount')->label('Remaining')->money('EGP'),
+                Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             ->filters([])
             ->actions([

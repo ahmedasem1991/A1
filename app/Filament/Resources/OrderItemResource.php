@@ -73,6 +73,12 @@ class OrderItemResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('order_id')
+                    ->label('Order')
+                    ->formatStateUsing(fn ($state) => "Order #$state")
+                    ->url(fn ($record) => OrderResource::getUrl('edit', ['record' => $record->order_id]))
+                    ->openUrlInNewTab() // Optional: opens in new tab
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('studioImage.image_size')->label('Studio Image'),
                 Tables\Columns\IconColumn::make('is_instant')->boolean(),
                 Tables\Columns\IconColumn::make('include_soft_copy')->boolean(),
