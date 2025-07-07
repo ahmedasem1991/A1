@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Models\Inventory;
 use App\Models\Product;
 use Filament\Forms;
 use Filament\Resources\Resource;
@@ -10,7 +11,15 @@ use Filament\Forms\Form;
 use Filament\Tables;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Table;
-use Illuminate\Support\Str;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\BelongsToManyRepeater;
+use Filament\Forms\Components\Select;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\IconColumn;
 
 class ProductResource extends Resource
 {
@@ -21,18 +30,18 @@ class ProductResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\TextInput::make('name')->required(),
-            Forms\Components\TextInput::make('sku')->unique(ignoreRecord: true),
-            Forms\Components\Textarea::make('description')->rows(3),
-            Forms\Components\TextInput::make('price')->numeric()->required(),
-            Forms\Components\TextInput::make('base_price')->numeric()->nullable(),
-            Forms\Components\Toggle::make('is_active')->label('Active')->default(true),
+            TextInput::make('name')->required(),
+            TextInput::make('sku')->unique(ignoreRecord: true),
+            Textarea::make('description')->rows(3),
+            TextInput::make('price')->numeric()->required(),
+            TextInput::make('base_price')->numeric()->nullable(),
+            Toggle::make('is_active')->label('Active')->default(true),
 
-            Forms\Components\Repeater::make('images')
+            Repeater::make('images')
                 ->label('Product Gallery')
                 ->relationship('images')
                 ->schema([
-                    Forms\Components\FileUpload::make('image_path')
+                    FileUpload::make('image_path')
                         ->label('Image')
                         ->image()
                         ->directory('product-images')
@@ -42,38 +51,59 @@ class ProductResource extends Resource
                 ->columns(1)
                 ->columnSpan('full')
                 ->createItemButtonLabel('Add Image'),
+            // Repeater for adding inventories and stock quantities
+            Repeater::make('inventoryProduct')
+                ->relationship()  // Use the 'inventories' relationship defined in the model
+                ->label('Inventory Stock')
+                ->schema([
+                    Select::make('inventory_id')  // Select Inventory
+                        ->options(Inventory::all()->pluck('name', 'id'))  // Get list of inventories
+                        ->searchable()
+                        ->required()
+                        ->label('Inventory'),
+
+                    TextInput::make('stock_quantity')  // Specify stock quantity for each inventory
+                        ->label('Stock Quantity')
+                        ->numeric()
+                        ->minValue(0)
+                        ->required(),
+                ])
+                ->columns(2)
+                ->defaultItems(1)
+                ->createItemButtonLabel('Add Inventory Stock'),
+
         ]);
     }
 
     public static function table(Table $table): Table
     {
         return $table->columns([
-                ImageColumn::make('first_image')
-                    ->label('Image')
-                    ->getStateUsing(function ($record) {
-                        // $record is Product model instance
-                        return $record->images->first()?->image_path; // or image_url depending on your column
-                    })
-                    ->rounded(),   // optional styling
-                    // ->square(),   // optional styling
-                Tables\Columns\TextColumn::make('name')->sortable()->searchable(),
-                Tables\Columns\TextColumn::make('sku')->sortable(),
-                Tables\Columns\TextColumn::make('price')->money('EGP'),
-                Tables\Columns\TextColumn::make('base_price')->money('EGP'),
+            ImageColumn::make('first_image')
+                ->label('Image')
+                ->getStateUsing(fn ($record) => $record->images->first()?->image_path)
+                ->rounded(),
 
-                Tables\Columns\IconColumn::make('is_active')
-                    ->boolean()
-                    ->label('Active'),
-                Tables\Columns\TextColumn::make('created_at')->dateTime(),
-            ])
-            ->filters([])
-            ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
-            ]);
+            TextColumn::make('name')->sortable()->searchable(),
+            TextColumn::make('sku')->sortable(),
+            TextColumn::make('price')->money('EGP'),
+            TextColumn::make('base_price')->money('EGP'),
+            IconColumn::make('is_active')->boolean()->label('Active'),
+
+            TextColumn::make('total_stock')
+                ->label('Total Stock')
+                ->getStateUsing(fn ($record) => $record->inventories->sum('pivot.stock_quantity')),
+
+            TextColumn::make('created_at')->dateTime(),
+        ])
+        ->filters([])
+        ->actions([
+            Tables\Actions\ViewAction::make(),
+            Tables\Actions\EditAction::make(),
+            Tables\Actions\DeleteAction::make(),
+        ])
+        ->bulkActions([
+            Tables\Actions\DeleteBulkAction::make(),
+        ]);
     }
 
     public static function getPages(): array
