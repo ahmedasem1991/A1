@@ -3,9 +3,12 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
+use App\Models\Category;
 use App\Models\Order;
 use App\Models\StudioImage;
 use App\Models\ImageCard;
+use App\Models\Product;
+use App\Models\ProductCategory;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -32,19 +35,48 @@ class OrderResource extends Resource
                 ->itemLabel(fn (array $state) => match ($state['category'] ?? null) {
                     'studio_image' => 'Studio image',
                     'image_card' => 'Image card',
+                    'product' => 'Product',
                     default => 'Item',
                 })
                 ->schema([
-                    Forms\Components\Grid::make(3)->schema([
+                    Forms\Components\Grid::make(4)->schema([
                         Forms\Components\Select::make('category')
                             ->label('Category')
                             ->options([
                                 'studio_image' => 'Studio Image',
                                 'image_card' => 'Image Card',
+                                'product' => 'Product',
                             ])
                             ->reactive()
                             ->required()
                             ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
+
+                        Forms\Components\Select::make('product_category_id')
+                            ->label('Product Category')
+                            ->options(Category::all()->pluck('name', 'id'))
+                            ->reactive()
+                            ->visible(fn ($get) => $get('category') === 'product')
+                                                        ->dehydrated(false) // 🚀 won't be saved to DB
+
+                            ->afterStateUpdated(fn ($set) => $set('product_id', null)),
+
+                        Forms\Components\Select::make('product_id')
+                            ->label('Product')
+                            ->options(function (callable $get) {
+                                $categoryId = $get('product_category_id');
+                                if (!$categoryId) return [];
+
+                                return Product::where('category_id', $categoryId)->get()->mapWithKeys(function ($product) {
+                                    $totalStock = $product->inventories->sum('pivot.stock_quantity');
+                                    $displayName = $product->sku . ' - ' . $product->name . ' (' . $totalStock . ' in stock)';
+                                    return [$product->id => $displayName];
+                                });
+                            })
+                            ->reactive()
+                            ->required()
+                            ->searchable()
+                            ->visible(fn ($get) => $get('category') === 'product')
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                         Forms\Components\Select::make('studio_image_id')
                             ->label('Studio Image')
@@ -97,6 +129,8 @@ class OrderResource extends Resource
     {
         $set('studio_image_id', null);
         $set('image_card_id', null);
+        $set('product_category_id', null);
+        $set('product_id', null);
         $set('is_instant', false);
         $set('include_soft_copy', false);
         $set('price', 0);
@@ -121,6 +155,11 @@ class OrderResource extends Resource
             if ($item) {
                 $price += $item->price;
                 if ($get('is_instant')) $price += $item->instant_price ?? 0;
+            }
+        } elseif ($category === 'product' && $id = $get('product_id')) {
+            $item = Product::find($id);
+            if ($item) {
+                $price += $item->price;
             }
         }
 
@@ -190,12 +229,17 @@ class OrderResource extends Resource
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             ->filters([])
+            
             ->actions([
-                Tables\Actions\EditAction::make(),
+            Tables\Actions\ViewAction::make(),
+            Tables\Actions\EditAction::make(),
+            Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\DeleteBulkAction::make(),
-            ]);
+            ])
+                    ->recordUrl(null)
+            ->recordAction('view');
     }
 
     public static function getRelations(): array

@@ -31,4 +31,8 @@ class Product extends Model
     {
         return $this->inventories->sum('pivot.stock_quantity');
     }
+    public function category()
+{
+    return $this->belongsTo(Category::class, 'category_id');
+}
 }

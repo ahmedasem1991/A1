@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Models\Category;
 use App\Models\Inventory;
 use App\Models\Product;
 use Filament\Forms;
@@ -35,6 +36,12 @@ class ProductResource extends Resource
             Textarea::make('description')->rows(3),
             TextInput::make('price')->numeric()->required(),
             TextInput::make('base_price')->numeric()->nullable(),
+            Select::make('category_id')
+                ->label('Product Category')
+                ->options(Category::all()->pluck('name', 'id'))
+                ->relationship('category', 'name')
+                ->searchable()
+                ->required(),
             Toggle::make('is_active')->label('Active')->default(true),
 
             Repeater::make('images')
@@ -87,6 +94,9 @@ class ProductResource extends Resource
             TextColumn::make('sku')->sortable(),
             TextColumn::make('price')->money('EGP'),
             TextColumn::make('base_price')->money('EGP'),
+          
+
+
             IconColumn::make('is_active')->boolean()->label('Active'),
 
             TextColumn::make('total_stock')
