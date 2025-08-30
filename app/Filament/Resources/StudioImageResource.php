@@ -17,7 +17,7 @@ class StudioImageResource extends Resource
 {
     protected static ?string $model = StudioImage::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-m-photo';
  // This is the parent category in the sidebar
  protected static ?string $navigationGroup = '⚙️ Studio Settings';
 

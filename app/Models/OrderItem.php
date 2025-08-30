@@ -11,7 +11,7 @@ class OrderItem extends Model
     use HasFactory;
  protected $guarded = [];
 
-
+ public static array $workflow = ['creation', 'processing', 'revision', 'printing', 'delivery','completed'];
   // app/Models/OrderItem.php
 public function order(): BelongsTo
 {
@@ -21,5 +21,19 @@ public function order(): BelongsTo
     public function studioImage()
     {
         return $this->belongsTo(\App\Models\StudioImage::class);
+    }
+
+    public function advanceStatus(): void
+    {
+        $currentIndex = array_search($this->status, self::$workflow);
+
+        if ($this->category === 'product' && $this->status === 'creation') {
+            $currentIndex += 4;
+        } else {
+            $currentIndex++;
+        }
+
+        $this->status = self::$workflow[$currentIndex] ?? $this->status;
+        $this->save();
     }
 }
