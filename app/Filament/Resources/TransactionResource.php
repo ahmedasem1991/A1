@@ -68,15 +68,19 @@ class TransactionResource extends Resource
                     ->date()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('user.name')
-                    ->numeric()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('order.name')
+                    ->sortable(),
+
+
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('type')->options([
                     'income' => 'Income',
                     'expense' => 'Expense',
                 ])
-                ->native(false),
+                    ->native(false),
                 Tables\Filters\Filter::make('date')
                     ->form([
                         Forms\Components\DatePicker::make('from')
@@ -165,6 +169,6 @@ class TransactionResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->orderBy('transaction_date', 'desc');
+        return parent::getEloquentQuery()->orderBy('id', 'desc');
     }
 }

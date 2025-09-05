@@ -22,4 +22,9 @@ class Transaction extends Model
             $transaction->user_id = auth()->user()->id;
         });
     }
+
+    public function order(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
 }

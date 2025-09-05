@@ -2,14 +2,15 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Order extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -18,42 +19,43 @@ class Order extends Model
         'total_price',
         'paid_amount',
         'remaining_amount',
+        'status',
     ];
     protected $casts = [
-            'items' => 'array', // ✅ required for saving repeater data
-            'subtotal' => 'float',
-            'discount' => 'float',
-            'total_price' => 'float',
-            'paid_amount' => 'float',
-            'remaining_amount' => 'float',
-        ];
+        'items' => 'array', // ✅ required for saving repeater data
+        'subtotal' => 'float',
+        'discount' => 'float',
+        'total_price' => 'float',
+        'paid_amount' => 'float',
+        'remaining_amount' => 'float',
+    ];
     public function orderItems(): HasMany
-{
-    return $this->hasMany(OrderItem::class);   // FK = order_id
-}
-    
-//   protected static function booted()
-//     {
-//         static::created(function ($order) {
-//             // Log to verify if this event is being triggered
-//             Log::info('Order created from Model event:', ['order' => $order->toArray()]);
-//             // You can also use dd($order) here
-//         });
-//     }
-// // Optional: Auto-calculate total price before saving
-// public function calculateTotals(): void
-// {
-//     $subtotal = $this->items()->sum('price');
-//     $total = max(0, $subtotal - $this->discount);
-//     $remaining = max(0, $total - $this->paid_amount);
+    {
+        return $this->hasMany(OrderItem::class);   // FK = order_id
+    }
 
-//     $this->subtotal = $subtotal;
-//     $this->total_price = $total;
-//     $this->remaining_amount = $remaining;
-//     $this->save();
-// }
+    //   protected static function booted()
+    //     {
+    //         static::created(function ($order) {
+    //             // Log to verify if this event is being triggered
+    //             Log::info('Order created from Model event:', ['order' => $order->toArray()]);
+    //             // You can also use dd($order) here
+    //         });
+    //     }
+    // // Optional: Auto-calculate total price before saving
+    // public function calculateTotals(): void
+    // {
+    //     $subtotal = $this->items()->sum('price');
+    //     $total = max(0, $subtotal - $this->discount);
+    //     $remaining = max(0, $total - $this->paid_amount);
 
-  public function calculateTotals(): void
+    //     $this->subtotal = $subtotal;
+    //     $this->total_price = $total;
+    //     $this->remaining_amount = $remaining;
+    //     $this->save();
+    // }
+
+    public function calculateTotals(): void
     {
         $subtotal = 0;
 
@@ -70,6 +72,4 @@ class Order extends Model
 
         $this->save();
     }
-
-  
 }
