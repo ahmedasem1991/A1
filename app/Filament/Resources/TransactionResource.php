@@ -75,7 +75,8 @@ class TransactionResource extends Resource
                 Tables\Filters\SelectFilter::make('type')->options([
                     'income' => 'Income',
                     'expense' => 'Expense',
-                ]),
+                ])
+                ->native(false),
                 Tables\Filters\Filter::make('date')
                     ->form([
                         Forms\Components\DatePicker::make('from')
