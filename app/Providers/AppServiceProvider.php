@@ -23,7 +23,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Activity::class, ActivityPolicy::class);
-        
+
         Gate::after(function ($user, $ability) {
             return $user->is_admin;
         });

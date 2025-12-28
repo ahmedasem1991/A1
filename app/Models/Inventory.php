@@ -9,16 +9,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Inventory extends Model
 {
     use HasFactory;
+
     protected $guarded = [];
 
     public function products()
     {
-        return $this->belongsToMany(Product::class , 'inventory_product')
-                    ->withPivot('stock_quantity')
-                    ->withTimestamps();
+        return $this->belongsToMany(Product::class, 'inventory_product')
+            ->withPivot('stock_quantity')
+            ->withTimestamps();
     }
 
-     public function inventoryProduct(): HasMany
+    public function inventoryProduct(): HasMany
     {
         return $this->hasMany(InventoryProduct::class);
     }

@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\StudioImageResource\Pages;
 
 use App\Filament\Resources\StudioImageResource;
-use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateStudioImage extends CreateRecord

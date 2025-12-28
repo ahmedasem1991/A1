@@ -3,15 +3,12 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ImageCardResource\Pages;
-use App\Filament\Resources\ImageCardResource\RelationManagers;
 use App\Models\ImageCard;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class ImageCardResource extends Resource
 {
@@ -19,11 +16,11 @@ class ImageCardResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-m-clipboard';
 
-     // This is the parent category in the sidebar
-     protected static ?string $navigationGroup = '⚙️ Studio Settings';
+    // This is the parent category in the sidebar
+    protected static ?string $navigationGroup = '⚙️ Studio Settings';
 
- // This is the resource label under that group
-//  protected static ?string $navigationLabel = 'Studio';
+    // This is the resource label under that group
+    //  protected static ?string $navigationLabel = 'Studio';
     public static function form(Form $form): Form
     {
         return $form
@@ -36,11 +33,11 @@ class ImageCardResource extends Resource
                     ->numeric()
                     ->prefix('EGP'),
                 Forms\Components\TextInput::make('instant_price')
-                ->numeric()
-                ->label('Instant Price')
-                ->prefix('EGP')
-                ->nullable(), 
-        
+                    ->numeric()
+                    ->label('Instant Price')
+                    ->prefix('EGP')
+                    ->nullable(),
+
             ]);
     }
 

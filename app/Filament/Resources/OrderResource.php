@@ -2,30 +2,31 @@
 
 namespace App\Filament\Resources;
 
-use Filament\Forms;
-use Filament\Tables;
+use App\Filament\Resources\OrderResource\Pages;
+use App\Models\Category;
+use App\Models\ImageCard;
 use App\Models\Order;
 use App\Models\Product;
-use App\Models\Category;
-use Filament\Forms\Form;
-use App\Models\ImageCard;
-use Filament\Tables\Table;
 use App\Models\StudioImage;
 use App\Models\Transaction;
+use Filament\Forms;
+use Filament\Forms\Form;
 use Filament\Resources\Resource;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
-use App\Filament\Resources\OrderResource\Pages;
+use Filament\Tables;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
 use IbrahimBougaoua\FilaProgress\Tables\Columns\CircleProgress;
-use IbrahimBougaoua\FilaProgress\Infolists\Components\CircleProgressEntry;
-
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class OrderResource extends Resource
 {
     protected static ?string $model = Order::class;
+
     protected static ?string $navigationGroup = 'Orders';
+
     protected static ?int $navigationSort = 1;
+
     protected static ?string $navigationIcon = 'heroicon-m-shopping-bag';
 
     public static function form(Form $form): Form
@@ -40,12 +41,7 @@ class OrderResource extends Resource
                 ->columnSpan('full')
                 ->default([])
                 ->collapsed(false)
-                ->itemLabel(fn(array $state) => match ($state['category'] ?? null) {
-                    'studio_image' => 'Studio image',
-                    'image_card' => 'Image card',
-                    'product' => 'Product',
-                    default => 'Item',
-                })
+                ->itemLabel(fn (array $state) => static::getItemLabel($state))
                 ->schema([
                     Forms\Components\Grid::make(4)->schema([
                         Forms\Components\TextInput::make('status')
@@ -62,62 +58,73 @@ class OrderResource extends Resource
                             ])
                             ->reactive()
                             ->required()
-                            ->afterStateUpdated(fn($set, $get) => static::resetItemFields($set, $get)),
+                            ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
 
                         Forms\Components\Select::make('product_category_id')
                             ->label('Product Category')
                             ->options(Category::all()->pluck('name', 'id'))
                             ->reactive()
-                            ->visible(fn($get) => $get('category') === 'product')
+                            ->searchable()
+                            ->preload()
+                            ->visible(fn ($get) => $get('category') === 'product')
                             ->dehydrated(false) // 🚀 won't be saved to DB
 
-                            ->afterStateUpdated(fn($set) => $set('product_id', null)),
+                            ->afterStateUpdated(fn ($set) => $set('product_id', null)),
 
                         Forms\Components\Select::make('product_id')
                             ->label('Product')
                             ->options(function (callable $get) {
                                 $categoryId = $get('product_category_id');
-                                if (!$categoryId) return [];
+                                if (! $categoryId) {
+                                    return [];
+                                }
 
                                 return Product::where('category_id', $categoryId)->get()->mapWithKeys(function ($product) {
                                     $totalStock = $product->inventories->sum('pivot.stock_quantity');
-                                    $displayName = $product->sku . ' - ' . $product->name . ' (' . $totalStock . ' in stock)';
+                                    $displayName = $product->sku.' - '.$product->name.' ('.$totalStock.' in stock)';
+
                                     return [$product->id => $displayName];
                                 });
                             })
                             ->reactive()
                             ->required()
                             ->searchable()
-                            ->visible(fn($get) => $get('category') === 'product')
-                            ->afterStateUpdated(fn($set, $get) => static::updateItemData($set, $get)),
+                            ->visible(fn ($get) => $get('category') === 'product')
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                         Forms\Components\Select::make('studio_image_id')
                             ->label('Studio Image')
                             ->options(StudioImage::all()->pluck('image_size', 'id'))
                             ->reactive()
                             ->required()
-                            ->visible(fn($get) => $get('category') === 'studio_image')
-                            ->afterStateUpdated(fn($set, $get) => static::updateItemData($set, $get)),
+                            ->visible(fn ($get) => $get('category') === 'studio_image')
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                         Forms\Components\Select::make('image_card_id')
                             ->label('Image Card')
                             ->options(ImageCard::all()->pluck('card_size', 'id'))
                             ->reactive()
                             ->required()
-                            ->visible(fn($get) => $get('category') === 'image_card')
-                            ->afterStateUpdated(fn($set, $get) => static::updateItemData($set, $get)),
+                            ->visible(fn ($get) => $get('category') === 'image_card')
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                         Forms\Components\Checkbox::make('is_instant')
-                            ->label('Instant Delivery')
+                            ->label('Fawry')
                             ->reactive()
-                            ->visible(fn($get) => static::shouldShowInstant($get))
-                            ->afterStateUpdated(fn($set, $get) => static::updateItemData($set, $get)),
+                            ->visible(fn ($get) => static::shouldShowInstant($get))
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                         Forms\Components\Checkbox::make('include_soft_copy')
                             ->label('Soft Copy')
                             ->reactive()
-                            ->visible(fn($get) => static::shouldShowSoftCopy($get))
-                            ->afterStateUpdated(fn($set, $get) => static::updateItemData($set, $get)),
+                            ->visible(fn ($get) => static::shouldShowSoftCopy($get))
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+
+                        Forms\Components\Checkbox::make('is_with_name')
+                            ->label('+Name')
+                            ->reactive()
+                            ->visible(fn ($get) => static::shouldShowWithName($get))
+                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                         Forms\Components\TextInput::make('price')
                             ->label('Item Price')
@@ -130,10 +137,10 @@ class OrderResource extends Resource
 
             Forms\Components\TextInput::make('subtotal')->numeric()->disabled()->dehydrated(true),
             Forms\Components\TextInput::make('discount')->numeric()->default(0)->reactive()
-                ->afterStateUpdated(fn($state, $set, $get) => static::updateOrderTotals($set, $get)),
+                ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
             Forms\Components\TextInput::make('total_price')->numeric()->disabled()->dehydrated(true),
             Forms\Components\TextInput::make('paid_amount')->numeric()->default(0)->reactive()
-                ->afterStateUpdated(fn($state, $set, $get) => static::updateOrderTotals($set, $get)),
+                ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
             Forms\Components\TextInput::make('remaining_amount')->numeric()->disabled()->dehydrated(true),
         ]);
     }
@@ -146,6 +153,7 @@ class OrderResource extends Resource
         $set('product_id', null);
         $set('is_instant', false);
         $set('include_soft_copy', false);
+        $set('is_with_name', false);
         $set('price', 0);
 
         static::updateOrderTotalsFromItem($set, $get);
@@ -160,14 +168,23 @@ class OrderResource extends Resource
             $item = StudioImage::find($id);
             if ($item) {
                 $price += $item->price;
-                if ($get('is_instant')) $price += $item->instant_price ?? 0;
-                if ($get('include_soft_copy')) $price += $item->soft_copy_price ?? 0;
+                if ($get('is_instant')) {
+                    $price += $item->instant_price ?? 0;
+                }
+                if ($get('include_soft_copy')) {
+                    $price += $item->soft_copy_price ?? 0;
+                }
+                if ($get('is_with_name')) {
+                    $price += $item->name_price ?? 0;
+                }
             }
         } elseif ($category === 'image_card' && $id = $get('image_card_id')) {
             $item = ImageCard::find($id);
             if ($item) {
                 $price += $item->price;
-                if ($get('is_instant')) $price += $item->instant_price ?? 0;
+                if ($get('is_instant')) {
+                    $price += $item->instant_price ?? 0;
+                }
             }
         } elseif ($category === 'product' && $id = $get('product_id')) {
             $item = Product::find($id);
@@ -189,19 +206,62 @@ class OrderResource extends Resource
         if ($category === 'image_card') {
             return optional(ImageCard::find($get('image_card_id')))->instant_price > 0;
         }
+
         return false;
     }
 
     protected static function shouldShowSoftCopy(callable $get): bool
     {
-        if ($get('category') !== 'studio_image') return false;
+        if ($get('category') !== 'studio_image') {
+            return false;
+        }
+
         return optional(StudioImage::find($get('studio_image_id')))->soft_copy_price > 0;
+    }
+
+    protected static function shouldShowWithName(callable $get): bool
+    {
+        if ($get('category') !== 'studio_image') {
+            return false;
+        }
+
+        return optional(StudioImage::find($get('studio_image_id')))->name_price > 0;
+    }
+
+    protected static function getItemLabel(array $state): string
+    {
+        $category = $state['category'] ?? null;
+        $label = match ($category) {
+            'studio_image' => 'Studio Image',
+            'image_card' => 'Image Card',
+            'product' => 'Product',
+            default => 'Item',
+        };
+
+        if ($category === 'studio_image' && isset($state['studio_image_id'])) {
+            $item = StudioImage::find($state['studio_image_id']);
+            if ($item) {
+                $label .= ' - '.$item->image_size;
+            }
+        } elseif ($category === 'image_card' && isset($state['image_card_id'])) {
+            $item = ImageCard::find($state['image_card_id']);
+            if ($item) {
+                $label .= ' - '.$item->card_size;
+            }
+        } elseif ($category === 'product' && isset($state['product_id'])) {
+            $item = Product::find($state['product_id']);
+            if ($item) {
+                $label .= ' - '.$item->name;
+            }
+        }
+
+        return $label;
     }
 
     protected static function updateOrderTotalsFromItem(callable $set, callable $get): void
     {
         $items = $get('../../orderItems') ?? [];
-        $subtotal = collect($items)->sum(fn($item) => floatval($item['price'] ?? 0));
+        $subtotal = collect($items)->sum(fn ($item) => floatval($item['price'] ?? 0));
         $discount = floatval($get('../../discount') ?? 0);
         $paid = floatval($get('../../paid_amount') ?? 0);
 
@@ -216,7 +276,7 @@ class OrderResource extends Resource
     protected static function updateOrderTotals(callable $set, callable $get): void
     {
         $items = $get('orderItems') ?? [];
-        $subtotal = collect($items)->sum(fn($item) => floatval($item['price'] ?? 0));
+        $subtotal = collect($items)->sum(fn ($item) => floatval($item['price'] ?? 0));
         $discount = floatval($get('discount') ?? 0);
         $paid = floatval($get('paid_amount') ?? 0);
 
@@ -249,6 +309,7 @@ class OrderResource extends Resource
                     ->getStateUsing(function ($record) {
                         $total = $record->orderItems()->count();
                         $progress = $record->orderItems()->where('status', 'completed')->count();
+
                         return [
                             'total' => $total,
                             'progress' => $progress,
@@ -275,38 +336,38 @@ class OrderResource extends Resource
                             Forms\Components\TextInput::make('subtotal')
                                 ->label('Subtotal')
                                 ->disabled()
-                                ->default(fn($record) => $record->subtotal),
+                                ->default(fn ($record) => $record->subtotal),
 
                             Forms\Components\TextInput::make('discount')
                                 ->label('Discount')
                                 ->disabled()
-                                ->default(fn($record) => $record->discount),
+                                ->default(fn ($record) => $record->discount),
 
                             Forms\Components\TextInput::make('total_price')
                                 ->label('Total Price')
                                 ->disabled()
-                                ->default(fn($record) => $record->total_price),
+                                ->default(fn ($record) => $record->total_price),
 
                             Forms\Components\TextInput::make('paid_amount')
                                 ->label('Paid Amount')
                                 ->disabled()
-                                ->default(fn($record) => $record->paid_amount),
+                                ->default(fn ($record) => $record->paid_amount),
 
                             Forms\Components\TextInput::make('remaining_amount')
                                 ->label('Remaining Amount')
                                 ->disabled()
-                                ->default(fn($record) => $record->remaining_amount),
+                                ->default(fn ($record) => $record->remaining_amount),
 
                             Forms\Components\TextInput::make('payment')
                                 ->label('Payment Amount')
                                 ->numeric()
                                 ->required()
-                                ->default(fn($record) => $record->remaining_amount)
-                                ->rules(fn($record) => [
+                                ->default(fn ($record) => $record->remaining_amount)
+                                ->rules(fn ($record) => [
                                     'min:1',
-                                    'max:' . $record->remaining_amount,
+                                    'max:'.$record->remaining_amount,
                                 ])
-                                ->helperText(fn($record) => "Enter amount between 1 and {$record->remaining_amount}"),
+                                ->helperText(fn ($record) => "Enter amount between 1 and {$record->remaining_amount}"),
                         ]),
                     ])
                     ->action(function ($record, array $data) {
@@ -328,7 +389,7 @@ class OrderResource extends Resource
 
                         $record->save();
                     })
-                    ->visible(fn($record) => $record->remaining_amount > 0 && $record->status == 'processing' && $record->orderItems()->where('status', 'completed')->count() == $record->orderItems()->count()),
+                    ->visible(fn ($record) => $record->remaining_amount > 0 && $record->status == 'processing' && $record->orderItems()->where('status', 'completed')->count() == $record->orderItems()->count()),
                 Tables\Actions\ViewAction::make()->slideOver(),
             ])
             ->bulkActions([

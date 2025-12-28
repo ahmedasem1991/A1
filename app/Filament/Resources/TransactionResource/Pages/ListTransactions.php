@@ -2,16 +2,17 @@
 
 namespace App\Filament\Resources\TransactionResource\Pages;
 
-use Filament\Actions;
-use Filament\Resources\Pages\ListRecords;
 use App\Filament\Resources\TransactionResource;
-use Filament\Pages\Concerns\ExposesTableToWidgets;
 use App\Filament\Resources\TransactionResource\Widgets\FinanceOverview;
 use App\Filament\Resources\TransactionResource\Widgets\TransactionsOverview;
+use Filament\Actions;
+use Filament\Pages\Concerns\ExposesTableToWidgets;
+use Filament\Resources\Pages\ListRecords;
 
 class ListTransactions extends ListRecords
 {
     use ExposesTableToWidgets;
+
     protected static string $resource = TransactionResource::class;
 
     protected function getHeaderActions(): array
@@ -24,7 +25,7 @@ class ListTransactions extends ListRecords
     protected function getHeaderWidgets(): array
     {
         return [
-            FinanceOverview::class
+            FinanceOverview::class,
         ];
     }
 

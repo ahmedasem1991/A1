@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-         Schema::table('order_items', function (Blueprint $table) {
+        Schema::table('order_items', function (Blueprint $table) {
             $table->foreignId('studio_image_id')->nullable()->change();
             $table->foreignId('image_card_id')->nullable()->change();
         });

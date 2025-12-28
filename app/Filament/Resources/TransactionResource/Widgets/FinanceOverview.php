@@ -2,10 +2,10 @@
 
 namespace App\Filament\Resources\TransactionResource\Widgets;
 
-use Filament\Widgets\StatsOverviewWidget\Stat;
+use App\Filament\Resources\TransactionResource\Pages\ListTransactions;
 use Filament\Widgets\Concerns\InteractsWithPageTable;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
-use App\Filament\Resources\TransactionResource\Pages\ListTransactions;
+use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class FinanceOverview extends BaseWidget
 {
@@ -16,13 +16,13 @@ class FinanceOverview extends BaseWidget
         $transactions = $this->getPageTableQuery()
             ->when(
                 $this->filters['type'] ?? null,
-                fn($query, $type) => $query->where('type', $type)
+                fn ($query, $type) => $query->where('type', $type)
             )
             ->when(
                 $this->filters['date'] ?? null,
-                fn($query, $data) => $query
-                    ->when($data['from'], fn($q) => $q->whereDate('transaction_date', '>=', $data['from']))
-                    ->when($data['until'], fn($q) => $q->whereDate('transaction_date', '<=', $data['until']))
+                fn ($query, $data) => $query
+                    ->when($data['from'], fn ($q) => $q->whereDate('transaction_date', '>=', $data['from']))
+                    ->when($data['until'], fn ($q) => $q->whereDate('transaction_date', '<=', $data['until']))
             )
             ->get();
 

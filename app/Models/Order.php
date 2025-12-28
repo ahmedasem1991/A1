@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Log;
 
 class Order extends Model
 {
@@ -21,6 +21,7 @@ class Order extends Model
         'remaining_amount',
         'status',
     ];
+
     protected $casts = [
         'items' => 'array', // ✅ required for saving repeater data
         'subtotal' => 'float',
@@ -29,6 +30,7 @@ class Order extends Model
         'paid_amount' => 'float',
         'remaining_amount' => 'float',
     ];
+
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);   // FK = order_id

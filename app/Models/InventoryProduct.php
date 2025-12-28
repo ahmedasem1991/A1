@@ -14,13 +14,13 @@ class InventoryProduct extends Model
 
     protected $fillable = ['product_id', 'inventory_id', 'stock_quantity'];
 
-     public function products(): BelongsTo
+    public function products(): BelongsTo
     {
         return $this->belongsTo(Product::class);
     }
 
     public function inventories(): BelongsTo
     {
-        return $this->belongsTo(Inventory::class , 'inventory_id');
+        return $this->belongsTo(Inventory::class, 'inventory_id');
     }
 }

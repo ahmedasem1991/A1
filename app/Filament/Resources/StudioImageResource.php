@@ -3,26 +3,24 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\StudioImageResource\Pages;
-use App\Filament\Resources\StudioImageResource\RelationManagers;
 use App\Models\StudioImage;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class StudioImageResource extends Resource
 {
     protected static ?string $model = StudioImage::class;
 
     protected static ?string $navigationIcon = 'heroicon-m-photo';
- // This is the parent category in the sidebar
- protected static ?string $navigationGroup = '⚙️ Studio Settings';
 
- // This is the resource label under that group
-//  protected static ?string $navigationLabel = 'Studio';
+    // This is the parent category in the sidebar
+    protected static ?string $navigationGroup = '⚙️ Studio Settings';
+
+    // This is the resource label under that group
+    //  protected static ?string $navigationLabel = 'Studio';
     public static function form(Form $form): Form
     {
         return $form->schema([
@@ -45,6 +43,11 @@ class StudioImageResource extends Resource
                 ->numeric()
                 ->label('Soft Copy Price')
                 ->nullable(),
+            Forms\Components\TextInput::make('name_price')
+                ->numeric()
+                ->label('+Name Price')
+                ->default(5.00)
+                ->nullable(),
         ]);
     }
 
@@ -53,10 +56,11 @@ class StudioImageResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('image_size'),
-        Tables\Columns\TextColumn::make('image_count'),
-        Tables\Columns\TextColumn::make('price')->money('EGP'),
-        Tables\Columns\TextColumn::make('instant_price')->money('EGP'),
-        Tables\Columns\TextColumn::make('soft_copy_price')->money('EGP'),
+                Tables\Columns\TextColumn::make('image_count'),
+                Tables\Columns\TextColumn::make('price')->money('EGP'),
+                Tables\Columns\TextColumn::make('instant_price')->money('EGP'),
+                Tables\Columns\TextColumn::make('soft_copy_price')->money('EGP'),
+                Tables\Columns\TextColumn::make('name_price')->money('EGP'),
             ])
             ->filters([
                 //

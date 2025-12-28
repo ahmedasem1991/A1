@@ -2,17 +2,17 @@
 
 namespace App\Filament\Resources;
 
-use Filament\Forms;
-use Filament\Tables;
-use Filament\Forms\Form;
-use Filament\Tables\Table;
-use App\Models\Transaction;
-use Filament\Support\RawJs;
-use Filament\Resources\Resource;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\TransactionResource\Pages;
+use App\Models\Transaction;
+use Filament\Forms;
+use Filament\Forms\Form;
 use Filament\Infolists\Infolist;
+use Filament\Resources\Resource;
+use Filament\Support\RawJs;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class TransactionResource extends Resource
 {
@@ -27,11 +27,12 @@ class TransactionResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Select::make('type')
-                    ->options([
-                        'income' => 'Income',
-                        'expense' => 'Expense',
-                    ])
-                    ->default('income')
+                    ->options(function () {
+                        $options = ['expense' => 'Expense'];
+
+                        return $options;
+                    })
+                    ->default('expense')
                     ->required()
                     ->native(false),
                 Forms\Components\TextInput::make('amount')
@@ -73,7 +74,6 @@ class TransactionResource extends Resource
                 Tables\Columns\TextColumn::make('order.name')
                     ->sortable(),
 
-
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('type')->options([
@@ -90,15 +90,15 @@ class TransactionResource extends Resource
                             ->native(false),
                         Forms\Components\DatePicker::make('until')
                             ->closeOnDateSelection()
-                            ->disabled(fn($get) => $get('from') === null)
-                            ->minDate(fn($get) => $get('from') ? \Illuminate\Support\Carbon::parse($get('from'))->addDay() : null)
+                            ->disabled(fn ($get) => $get('from') === null)
+                            ->minDate(fn ($get) => $get('from') ? \Illuminate\Support\Carbon::parse($get('from'))->addDay() : null)
                             ->maxDate(now())
-                            ->native(false)
+                            ->native(false),
                     ])
                     ->query(
-                        fn($query, $data) => $query
-                            ->when($data['from'], fn($q) => $q->whereDate('transaction_date', '>=', $data['from']))
-                            ->when($data['until'], fn($q) => $q->whereDate('transaction_date', '<=', $data['until']))
+                        fn ($query, $data) => $query
+                            ->when($data['from'], fn ($q) => $q->whereDate('transaction_date', '>=', $data['from']))
+                            ->when($data['until'], fn ($q) => $q->whereDate('transaction_date', '<=', $data['until']))
                     ),
             ])
             ->actions([
@@ -120,7 +120,7 @@ class TransactionResource extends Resource
                             ->label('Date'),
                         \Filament\Infolists\Components\TextEntry::make('type')
                             ->badge()
-                            ->color(fn($state) => $state === 'income' ? 'success' : 'danger')
+                            ->color(fn ($state) => $state === 'income' ? 'success' : 'danger')
                             ->label('Type'),
                         \Filament\Infolists\Components\TextEntry::make('amount')
                             ->money('EGP')
@@ -138,6 +138,7 @@ class TransactionResource extends Resource
                     ]),
             ]);
     }
+
     public static function getRelations(): array
     {
         return [

@@ -19,7 +19,9 @@ class Transaction extends Model
     protected static function booted()
     {
         static::creating(function ($transaction) {
-            $transaction->user_id = auth()->user()->id;
+            if (auth()->check() && ! $transaction->user_id) {
+                $transaction->user_id = auth()->user()->id;
+            }
         });
     }
 

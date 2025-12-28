@@ -12,7 +12,7 @@ class ImageCard extends Model
     protected $fillable = [
         'card_size',
         'price',
-        'instant_price', 
+        'instant_price',
 
     ];
 }

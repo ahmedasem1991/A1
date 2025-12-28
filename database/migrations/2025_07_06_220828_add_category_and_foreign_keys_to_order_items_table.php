@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('order_items', function (Blueprint $table) {
-          // Drop old foreign key constraints
+            // Drop old foreign key constraints
 
             // Modify the foreign keys to use 'set null' on delete
             $table->foreignId('image_card_id')->nullable()->constrained()->onDelete('set null')->change();
@@ -28,7 +28,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('order_items', function (Blueprint $table) {
-             // Drop new columns
+            // Drop new columns
             $table->dropColumn('category');
             $table->dropForeign(['studio_image_id']);
             $table->dropForeign(['image_card_id']);

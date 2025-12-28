@@ -6,26 +6,26 @@ use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Category;
 use App\Models\Inventory;
 use App\Models\Product;
-use Filament\Forms;
-use Filament\Resources\Resource;
-use Filament\Forms\Form;
-use Filament\Tables;
-use Filament\Tables\Columns\ImageColumn;
-use Filament\Tables\Table;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\BelongsToManyRepeater;
 use Filament\Forms\Components\Select;
-use Filament\Tables\Columns\TextColumn;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
+use Filament\Forms\Form;
+use Filament\Resources\Resource;
+use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\ImageColumn;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 
 class ProductResource extends Resource
 {
     protected static ?string $model = Product::class;
+
     protected static ?string $navigationIcon = 'heroicon-o-cube';
+
     protected static ?string $navigationGroup = 'Inventory Management';
 
     public static function form(Form $form): Form
@@ -41,6 +41,7 @@ class ProductResource extends Resource
                 ->options(Category::all()->pluck('name', 'id'))
                 ->relationship('category', 'name')
                 ->searchable()
+                ->preload()
                 ->required(),
             Toggle::make('is_active')->label('Active')->default(true),
 
@@ -53,7 +54,7 @@ class ProductResource extends Resource
                         ->image()
                         ->directory('product-images')
                         ->required()
-                        ->preserveFilenames()
+                        ->preserveFilenames(),
                 ])
                 ->columns(1)
                 ->columnSpan('full')
@@ -94,8 +95,6 @@ class ProductResource extends Resource
             TextColumn::make('sku')->sortable(),
             TextColumn::make('price')->money('EGP'),
             TextColumn::make('base_price')->money('EGP'),
-          
-
 
             IconColumn::make('is_active')->boolean()->label('Active'),
 
@@ -105,15 +104,15 @@ class ProductResource extends Resource
 
             TextColumn::make('created_at')->dateTime(),
         ])
-        ->filters([])
-        ->actions([
-            Tables\Actions\ViewAction::make(),
-            Tables\Actions\EditAction::make(),
-            Tables\Actions\DeleteAction::make(),
-        ])
-        ->bulkActions([
-            Tables\Actions\DeleteBulkAction::make(),
-        ]);
+            ->filters([])
+            ->actions([
+                Tables\Actions\ViewAction::make(),
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make(),
+            ])
+            ->bulkActions([
+                Tables\Actions\DeleteBulkAction::make(),
+            ]);
     }
 
     public static function getPages(): array

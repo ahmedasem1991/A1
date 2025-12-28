@@ -17,7 +17,7 @@ return new class extends Migration
 
             // Assuming only StudioImage is needed for now
             $table->foreignId('studio_image_id')->constrained()->cascadeOnDelete();
-    
+
             $table->boolean('is_instant')->default(false);
             $table->boolean('include_soft_copy')->default(false);
             $table->decimal('price', 8, 2); // computed total price

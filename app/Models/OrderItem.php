@@ -2,18 +2,20 @@
 
 namespace App\Models;
 
-use Spatie\MediaLibrary\HasMedia;
-use Illuminate\Database\Eloquent\Model;
-use Spatie\MediaLibrary\InteractsWithMedia;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
 class OrderItem extends Model implements HasMedia
 {
     use HasFactory, InteractsWithMedia;
+
     protected $guarded = [];
 
     public static array $workflow = ['creation', 'processing', 'revision', 'printing', 'completed'];
+
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('original_image')->singleFile();

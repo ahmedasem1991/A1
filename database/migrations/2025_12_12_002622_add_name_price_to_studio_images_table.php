@@ -11,8 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->foreignId('category_id')->nullable()->constrained()->nullOnDelete();
+        Schema::table('studio_images', function (Blueprint $table) {
+            $table->decimal('name_price', 10, 2)->default(5.00)->after('soft_copy_price');
         });
     }
 
@@ -21,8 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            $table->dropForeign(['category_id']);
+        Schema::table('studio_images', function (Blueprint $table) {
+            $table->dropColumn('name_price');
         });
     }
 };
