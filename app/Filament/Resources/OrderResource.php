@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\StudioImage;
 use App\Models\Transaction;
+use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -19,7 +20,7 @@ use IbrahimBougaoua\FilaProgress\Tables\Columns\CircleProgress;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
-class OrderResource extends Resource
+class OrderResource extends Resource implements HasShieldPermissions
 {
     protected static ?string $model = Order::class;
 
@@ -42,97 +43,109 @@ class OrderResource extends Resource
                 ->default([])
                 ->collapsed(false)
                 ->itemLabel(fn (array $state) => static::getItemLabel($state))
+                ->deleteAction(fn ($action) => $action->requiresConfirmation())
                 ->schema([
-                    Forms\Components\Grid::make(4)->schema([
-                        Forms\Components\TextInput::make('status')
-                            ->label('Status')
-                            ->default('creation')
-                            ->hiddenOn(['create', 'edit'])
-                            ->disabled(),
-                        Forms\Components\Select::make('category')
-                            ->label('Category')
-                            ->options([
-                                'studio_image' => 'Studio Image',
-                                'image_card' => 'Image Card',
-                                'product' => 'Product',
-                            ])
-                            ->reactive()
-                            ->required()
-                            ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
+                    Forms\Components\Grid::make(4)
+                        ->schema([
+                            Forms\Components\TextInput::make('status')
+                                ->label('Status')
+                                ->default('creation')
+                                ->hiddenOn('create')
+                                ->disabled(),
+                            Forms\Components\Select::make('category')
+                                ->label('Category')
+                                ->options([
+                                    'studio_image' => 'Studio Image',
+                                    'image_card' => 'Image Card',
+                                    'product' => 'Product',
+                                ])
+                                ->reactive()
+                                ->required()
+                                ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
 
-                        Forms\Components\Select::make('product_category_id')
-                            ->label('Product Category')
-                            ->options(Category::all()->pluck('name', 'id'))
-                            ->reactive()
-                            ->searchable()
-                            ->preload()
-                            ->visible(fn ($get) => $get('category') === 'product')
-                            ->dehydrated(false) // 🚀 won't be saved to DB
+                            Forms\Components\Select::make('product_category_id')
+                                ->label('Product Category')
+                                ->options(Category::all()->pluck('name', 'id'))
+                                ->reactive()
+                                ->searchable()
+                                ->preload()
+                                ->visible(fn ($get) => $get('category') === 'product')
+                                ->dehydrated(false) // 🚀 won't be saved to DB
 
-                            ->afterStateUpdated(fn ($set) => $set('product_id', null)),
+                                ->afterStateUpdated(fn ($set) => $set('product_id', null)),
 
-                        Forms\Components\Select::make('product_id')
-                            ->label('Product')
-                            ->options(function (callable $get) {
-                                $categoryId = $get('product_category_id');
-                                if (! $categoryId) {
-                                    return [];
-                                }
+                            Forms\Components\Select::make('product_id')
+                                ->label('Product')
+                                ->options(function (callable $get) {
+                                    $categoryId = $get('product_category_id');
+                                    if (! $categoryId) {
+                                        return [];
+                                    }
 
-                                return Product::where('category_id', $categoryId)->get()->mapWithKeys(function ($product) {
-                                    $totalStock = $product->inventories->sum('pivot.stock_quantity');
-                                    $displayName = $product->sku.' - '.$product->name.' ('.$totalStock.' in stock)';
+                                    return Product::where('category_id', $categoryId)->get()->mapWithKeys(function ($product) {
+                                        $totalStock = $product->inventories->sum('pivot.stock_quantity');
+                                        $displayName = $product->sku.' - '.$product->name.' ('.$totalStock.' in stock)';
 
-                                    return [$product->id => $displayName];
-                                });
-                            })
-                            ->reactive()
-                            ->required()
-                            ->searchable()
-                            ->visible(fn ($get) => $get('category') === 'product')
-                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+                                        return [$product->id => $displayName];
+                                    });
+                                })
+                                ->reactive()
+                                ->required()
+                                ->searchable()
+                                ->visible(fn ($get) => $get('category') === 'product')
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                        Forms\Components\Select::make('studio_image_id')
-                            ->label('Studio Image')
-                            ->options(StudioImage::all()->pluck('image_size', 'id'))
-                            ->reactive()
-                            ->required()
-                            ->visible(fn ($get) => $get('category') === 'studio_image')
-                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+                            Forms\Components\Select::make('studio_image_id')
+                                ->label('Studio Image')
+                                ->options(StudioImage::all()->pluck('image_size', 'id'))
+                                ->reactive()
+                                ->required()
+                                ->visible(fn ($get) => $get('category') === 'studio_image')
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                        Forms\Components\Select::make('image_card_id')
-                            ->label('Image Card')
-                            ->options(ImageCard::all()->pluck('card_size', 'id'))
-                            ->reactive()
-                            ->required()
-                            ->visible(fn ($get) => $get('category') === 'image_card')
-                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+                            Forms\Components\Select::make('image_card_id')
+                                ->label('Image Card')
+                                ->options(ImageCard::all()->pluck('card_size', 'id'))
+                                ->reactive()
+                                ->required()
+                                ->visible(fn ($get) => $get('category') === 'image_card')
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                        Forms\Components\Checkbox::make('is_instant')
-                            ->label('Fawry')
-                            ->reactive()
-                            ->visible(fn ($get) => static::shouldShowInstant($get))
-                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+                            Forms\Components\Checkbox::make('is_instant')
+                                ->label('Fawry')
+                                ->reactive()
+                                ->visible(fn ($get) => static::shouldShowInstant($get))
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                        Forms\Components\Checkbox::make('include_soft_copy')
-                            ->label('Soft Copy')
-                            ->reactive()
-                            ->visible(fn ($get) => static::shouldShowSoftCopy($get))
-                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+                            Forms\Components\Checkbox::make('include_soft_copy')
+                                ->label('Soft Copy')
+                                ->reactive()
+                                ->visible(fn ($get) => static::shouldShowSoftCopy($get))
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                        Forms\Components\Checkbox::make('is_with_name')
-                            ->label('+Name')
-                            ->reactive()
-                            ->visible(fn ($get) => static::shouldShowWithName($get))
-                            ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+                            Forms\Components\Checkbox::make('is_with_name')
+                                ->label('+Name')
+                                ->reactive()
+                                ->visible(fn ($get) => static::shouldShowWithName($get))
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
-                        Forms\Components\TextInput::make('price')
-                            ->label('Item Price')
-                            ->numeric()
-                            ->disabled()
-                            ->dehydrated(true)
-                            ->columnSpanFull(),
-                    ]),
+                            Forms\Components\TextInput::make('quantity')
+                                ->label('Quantity')
+                                ->numeric()
+                                ->default(1)
+                                ->minValue(1)
+                                ->reactive()
+                                ->required()
+                                ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+
+                            Forms\Components\TextInput::make('price')
+                                ->label('Total Price')
+                                ->numeric()
+                                ->disabled()
+                                ->dehydrated(true)
+                                ->columnSpanFull(),
+                        ])
+                        ->disabled(fn ($get) => $get('status') !== null && $get('status') !== 'creation'),
                 ]),
 
             Forms\Components\TextInput::make('subtotal')->numeric()->disabled()->dehydrated(true),
@@ -154,6 +167,7 @@ class OrderResource extends Resource
         $set('is_instant', false);
         $set('include_soft_copy', false);
         $set('is_with_name', false);
+        $set('quantity', 1);
         $set('price', 0);
 
         static::updateOrderTotalsFromItem($set, $get);
@@ -193,7 +207,8 @@ class OrderResource extends Resource
             }
         }
 
-        $set('price', number_format($price, 2, '.', ''));
+        $quantity = max(1, intval($get('quantity') ?? 1));
+        $set('price', number_format($price * $quantity, 2, '.', ''));
         static::updateOrderTotalsFromItem($set, $get);
     }
 
@@ -391,6 +406,8 @@ class OrderResource extends Resource
                     })
                     ->visible(fn ($record) => $record->remaining_amount > 0 && $record->status == 'processing' && $record->orderItems()->where('status', 'completed')->count() == $record->orderItems()->count()),
                 Tables\Actions\ViewAction::make()->slideOver(),
+                Tables\Actions\EditAction::make()
+                    ->visible(fn () => auth()->user()->can('edit_order')),
             ])
             ->bulkActions([
                 //
@@ -415,7 +432,7 @@ class OrderResource extends Resource
 
     public static function canEdit(Model $record): bool
     {
-        return false;
+        return auth()->user()->can('edit_order');
     }
 
     public static function canDelete(Model $record): bool
@@ -426,6 +443,18 @@ class OrderResource extends Resource
     public static function canDeleteAny(): bool
     {
         return false;
+    }
+
+    public static function getPermissionPrefixes(): array
+    {
+        return [
+            'view',
+            'view_any',
+            'create',
+            'edit',
+            'delete',
+            'delete_any',
+        ];
     }
 
     public static function getEloquentQuery(): Builder

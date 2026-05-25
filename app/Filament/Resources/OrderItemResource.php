@@ -65,7 +65,8 @@ class OrderItemResource extends Resource implements HasShieldPermissions
             $price += $studioImage->soft_copy_price ?? 0;
         }
 
-        $set('price', number_format($price, 2, '.', ''));
+        $quantity = max(1, intval($get('quantity') ?? 1));
+        $set('price', number_format($price * $quantity, 2, '.', ''));
     }
 
     public static function table(Table $table): Table
@@ -74,15 +75,21 @@ class OrderItemResource extends Resource implements HasShieldPermissions
             ->columns([
                 Tables\Columns\TextColumn::make('order_id')
                     ->label('Order')
-                    ->formatStateUsing(fn ($state) => "Order #$state")
+                    ->formatStateUsing(fn ($state, $record) => "#{$state} - {$record->order->name}")
                     ->url(fn ($record) => OrderResource::getUrl('edit', ['record' => $record->order_id]))
-                    ->openUrlInNewTab() // Optional: opens in new tab
-                    ->searchable(),
+                    ->openUrlInNewTab()
+                    ->searchable(query: fn (Builder $query, string $search) => $query->whereHas(
+                        'order',
+                        fn ($q) => $q->where('name', 'like', "%{$search}%")
+                            ->orWhereRaw('CAST(orders.id AS CHAR) LIKE ?', ["%{$search}%"])
+                    )),
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status'),
                 Tables\Columns\TextColumn::make('category')
                     ->label('Category')
                     ->formatStateUsing(fn ($state) => ucfirst(str_replace('_', ' ', $state))),
+                Tables\Columns\TextColumn::make('quantity')
+                    ->label('Qty'),
                 Tables\Columns\TextColumn::make('item_name')
                     ->label('Item')
                     ->getStateUsing(function ($record) {
@@ -191,8 +198,17 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                         ->visible(fn ($get) => static::shouldShowWithName($get))
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
+                    Forms\Components\TextInput::make('quantity')
+                        ->label('Quantity')
+                        ->numeric()
+                        ->default(1)
+                        ->minValue(1)
+                        ->reactive()
+                        ->required()
+                        ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
+
                     Forms\Components\TextInput::make('price')
-                        ->label('Item Price')
+                        ->label('Total Price')
                         ->numeric()
                         ->disabled()
                         ->dehydrated(true)
@@ -217,12 +233,15 @@ class OrderItemResource extends Resource implements HasShieldPermissions
             ->schema([
                 SpatieMediaLibraryFileUpload::make('original_image')
                     ->label('Image')
-                    ->collection('original_image')
-                    ->required(),
+                    ->collection('original_image'),
             ])
             ->afterValidation(function ($record, Get $get) {
                 $file = $get('original_image');
-                $record->addMedia(reset($file))->toMediaCollection('original_image');
+
+                if (! empty($file)) {
+                    $record->addMedia(reset($file))->toMediaCollection('original_image');
+                }
+
                 $record->advanceStatus();
 
                 if (auth()->user()->can('view_revision_form_order::item')) {
@@ -231,7 +250,7 @@ class OrderItemResource extends Resource implements HasShieldPermissions
 
                 return redirect()->route('filament.admin.resources.order-items.index');
             })
-            ->visible(fn ($record) => $record->category !== 'product');
+            ->visible(fn ($record) => $record->category === 'studio_image');
     }
 
     protected static function stepRevision(): Wizard\Step
@@ -264,7 +283,7 @@ class OrderItemResource extends Resource implements HasShieldPermissions
 
                 return redirect()->route('filament.admin.resources.order-items.index');
             })
-            ->visible(fn ($record) => $record->category !== 'product');
+            ->visible(fn ($record) => $record->category === 'studio_image');
     }
 
     protected static function stepPrinting(): Wizard\Step
@@ -278,12 +297,14 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                             ->label('Image')
                             ->collection('original_image')
                             ->downloadable()
-                            ->disabled(),
+                            ->disabled()
+                            ->visible(fn ($record) => $record->category === 'studio_image'),
                         SpatieMediaLibraryFileUpload::make('enhanced_image')
                             ->label('Enhanced Image')
                             ->collection('enhanced_image')
                             ->downloadable()
-                            ->disabled(),
+                            ->disabled()
+                            ->visible(fn ($record) => $record->category === 'studio_image'),
                     ]),
                 ])
                 ->afterValidation(function ($record) {
@@ -356,7 +377,7 @@ class OrderItemResource extends Resource implements HasShieldPermissions
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereIn('status', $allowedStatuses);
+        return $query->whereIn('status', $allowedStatuses)->orderBy('id', 'desc');
     }
 
     protected static function shouldShowInstant(callable $get): bool

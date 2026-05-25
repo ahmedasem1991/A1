@@ -5,12 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
 class OrderItem extends Model implements HasMedia
 {
-    use HasFactory, InteractsWithMedia;
+    use HasFactory, InteractsWithMedia, SoftDeletes;
 
     protected $guarded = [];
 
@@ -47,13 +48,28 @@ class OrderItem extends Model implements HasMedia
     {
         $currentIndex = array_search($this->status, self::$workflow);
 
-        if ($this->category === 'product' && $this->status === 'creation') {
-            $currentIndex += 4;
+        if (in_array($this->category, ['product', 'image_card']) && $this->status === 'creation') {
+            $currentIndex = array_search('printing', self::$workflow);
+
+            if ($this->category === 'product') {
+                $this->deductStock();
+            }
         } else {
             $currentIndex++;
         }
 
         $this->status = self::$workflow[$currentIndex] ?? $this->status;
         $this->save();
+    }
+
+    protected function deductStock(): void
+    {
+        $inventory = $this->product?->inventories()
+            ->wherePivot('stock_quantity', '>=', $this->quantity)
+            ->first();
+
+        if ($inventory) {
+            $inventory->pivot->decrement('stock_quantity', $this->quantity);
+        }
     }
 }
