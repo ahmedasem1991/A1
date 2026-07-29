@@ -111,6 +111,38 @@ class SalesReportServiceTest extends TestCase
         $this->assertEquals(0, $result['products']->count());
     }
 
+    public function test_it_groups_studio_images_by_size_and_fawry_name_soft_copy_combination(): void
+    {
+        $studioImage = StudioImage::factory()->create(['image_size' => '8x10']);
+
+        $this->makeItem(['category' => 'studio_image', 'studio_image_id' => $studioImage->id, 'price' => 150, 'is_instant' => true]);
+        $this->makeItem(['category' => 'studio_image', 'studio_image_id' => $studioImage->id, 'price' => 150, 'is_instant' => true]);
+        $this->makeItem(['category' => 'studio_image', 'studio_image_id' => $studioImage->id, 'price' => 175, 'is_instant' => true, 'is_with_name' => true]);
+        $this->makeItem(['category' => 'studio_image', 'studio_image_id' => $studioImage->id, 'price' => 160, 'include_soft_copy' => true]);
+        $this->makeItem(['category' => 'studio_image', 'studio_image_id' => $studioImage->id, 'price' => 120]);
+
+        $result = app(SalesReportService::class)->summarizeRange(now()->startOfDay(), now()->endOfDay());
+
+        $studioImages = $result['studio_images']->keyBy('name');
+
+        $this->assertEquals(5, $studioImages->sum('times_sold'));
+
+        $this->assertEquals(2, $studioImages['8x10 · Fawry']['times_sold']);
+        $this->assertTrue($studioImages['8x10 · Fawry']['is_instant']);
+        $this->assertFalse($studioImages['8x10 · Fawry']['is_with_name']);
+
+        $this->assertEquals(1, $studioImages['8x10 · Fawry · +Name']['times_sold']);
+        $this->assertTrue($studioImages['8x10 · Fawry · +Name']['is_with_name']);
+
+        $this->assertEquals(1, $studioImages['8x10 · Soft Copy']['times_sold']);
+        $this->assertTrue($studioImages['8x10 · Soft Copy']['include_soft_copy']);
+
+        $this->assertEquals(1, $studioImages['8x10']['times_sold']);
+        $this->assertFalse($studioImages['8x10']['is_instant']);
+        $this->assertFalse($studioImages['8x10']['is_with_name']);
+        $this->assertFalse($studioImages['8x10']['include_soft_copy']);
+    }
+
     public function test_it_counts_items_regardless_of_workflow_status(): void
     {
         $product = Product::factory()->create();

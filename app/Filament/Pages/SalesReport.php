@@ -48,7 +48,7 @@ class SalesReport extends Page implements HasForms
     /**
      * @return array{
      *     products: \Illuminate\Support\Collection<int, array{name: string, times_sold: int, total_quantity: int, total_revenue: float}>,
-     *     studio_images: \Illuminate\Support\Collection<int, array{name: string, times_sold: int, total_quantity: int, total_revenue: float}>,
+     *     studio_images: \Illuminate\Support\Collection<int, array{name: string, times_sold: int, total_quantity: int, total_revenue: float, is_instant: bool, is_with_name: bool, include_soft_copy: bool}>,
      *     image_cards: \Illuminate\Support\Collection<int, array{name: string, times_sold: int, total_quantity: int, total_revenue: float}>,
      *     total_items_sold: int,
      *     total_revenue: float,
