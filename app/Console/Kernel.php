@@ -12,7 +12,8 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        $schedule->command('finance:refresh-daily-summary')->dailyAt('00:05');
+        $schedule->command('finance:flag-overdue')->dailyAt('00:10');
     }
 
     /**

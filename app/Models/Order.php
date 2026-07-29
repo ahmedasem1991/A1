@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\OrderStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Log;
 
 class Order extends Model
 {
@@ -14,6 +16,7 @@ class Order extends Model
 
     protected $fillable = [
         'name',
+        'customer_id',
         'subtotal',
         'discount',
         'total_price',
@@ -24,11 +27,12 @@ class Order extends Model
 
     protected $casts = [
         'items' => 'array', // ✅ required for saving repeater data
-        'subtotal' => 'float',
-        'discount' => 'float',
-        'total_price' => 'float',
-        'paid_amount' => 'float',
-        'remaining_amount' => 'float',
+        'subtotal' => 'decimal:2',
+        'discount' => 'decimal:2',
+        'total_price' => 'decimal:2',
+        'paid_amount' => 'decimal:2',
+        'remaining_amount' => 'decimal:2',
+        'status' => OrderStatus::class,
     ];
 
     public function orderItems(): HasMany
@@ -36,42 +40,13 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);   // FK = order_id
     }
 
-    //   protected static function booted()
-    //     {
-    //         static::created(function ($order) {
-    //             // Log to verify if this event is being triggered
-    //             Log::info('Order created from Model event:', ['order' => $order->toArray()]);
-    //             // You can also use dd($order) here
-    //         });
-    //     }
-    // // Optional: Auto-calculate total price before saving
-    // public function calculateTotals(): void
-    // {
-    //     $subtotal = $this->items()->sum('price');
-    //     $total = max(0, $subtotal - $this->discount);
-    //     $remaining = max(0, $total - $this->paid_amount);
-
-    //     $this->subtotal = $subtotal;
-    //     $this->total_price = $total;
-    //     $this->remaining_amount = $remaining;
-    //     $this->save();
-    // }
-
-    public function calculateTotals(): void
+    public function customer(): BelongsTo
     {
-        $subtotal = 0;
+        return $this->belongsTo(Customer::class);
+    }
 
-        foreach ($this->items ?? [] as $item) {
-            $subtotal += floatval($item['price'] ?? 0);
-        }
-
-        $total = max(0, $subtotal - ($this->discount ?? 0));
-        $remaining = max(0, $total - ($this->paid_amount ?? 0));
-
-        $this->subtotal = $subtotal;
-        $this->total_price = $total;
-        $this->remaining_amount = $remaining;
-
-        $this->save();
+    public function invoice(): HasOne
+    {
+        return $this->hasOne(Invoice::class);
     }
 }

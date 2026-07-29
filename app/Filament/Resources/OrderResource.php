@@ -2,13 +2,19 @@
 
 namespace App\Filament\Resources;
 
+use App\Actions\Finance\RecordPaymentAction;
+use App\Actions\Finance\RecordSaleAction;
+use App\Enums\AccountSubtype;
+use App\Enums\OrderStatus;
+use App\Enums\PaymentMethod;
 use App\Filament\Resources\OrderResource\Pages;
+use App\Models\Account;
 use App\Models\Category;
+use App\Models\Customer;
 use App\Models\ImageCard;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\StudioImage;
-use App\Models\Transaction;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -33,7 +39,31 @@ class OrderResource extends Resource implements HasShieldPermissions
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\TextInput::make('name')->required(),
+            Forms\Components\Select::make('customer_id')
+                ->label('Customer')
+                ->relationship('customer', 'name')
+                ->searchable()
+                ->preload()
+                ->required()
+                ->createOptionForm([
+                    Forms\Components\TextInput::make('name')
+                        ->required()
+                        ->maxLength(255),
+                    Forms\Components\TextInput::make('phone')
+                        ->tel()
+                        ->maxLength(255)
+                        ->unique(ignoreRecord: true, table: 'customers'),
+                    Forms\Components\TextInput::make('email')
+                        ->email()
+                        ->maxLength(255)
+                        ->unique(ignoreRecord: true, table: 'customers'),
+                ])
+                ->afterStateUpdated(function ($state, callable $set) {
+                    $set('name', $state ? Customer::find($state)?->name : null);
+                })
+                ->live(),
+
+            Forms\Components\Hidden::make('name'),
 
             Forms\Components\Repeater::make('orderItems')
                 ->label('Order Items')
@@ -136,6 +166,7 @@ class OrderResource extends Resource implements HasShieldPermissions
                                 ->minValue(1)
                                 ->reactive()
                                 ->required()
+                                ->rules([fn ($get) => static::stockAvailabilityRule($get)])
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                             Forms\Components\TextInput::make('price')
@@ -149,13 +180,44 @@ class OrderResource extends Resource implements HasShieldPermissions
                 ]),
 
             Forms\Components\TextInput::make('subtotal')->numeric()->disabled()->dehydrated(true),
-            Forms\Components\TextInput::make('discount')->numeric()->default(0)->reactive()
+            Forms\Components\TextInput::make('discount')->numeric()->default(0)->minValue(0)
+                ->maxValue(fn (callable $get) => $get('subtotal') ?? 0)
+                ->reactive()
                 ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
             Forms\Components\TextInput::make('total_price')->numeric()->disabled()->dehydrated(true),
-            Forms\Components\TextInput::make('paid_amount')->numeric()->default(0)->reactive()
+            Forms\Components\TextInput::make('paid_amount')->numeric()->default(0)->minValue(0)
+                ->maxValue(fn (callable $get) => $get('total_price') ?? 0)
+                ->reactive()
                 ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
             Forms\Components\TextInput::make('remaining_amount')->numeric()->disabled()->dehydrated(true),
         ]);
+    }
+
+    protected static function stockAvailabilityRule(callable $get): \Closure
+    {
+        return function (string $attribute, $value, callable $fail) use ($get) {
+            if ($get('category') !== 'product') {
+                return;
+            }
+
+            $productId = $get('product_id');
+
+            if (! $productId) {
+                return;
+            }
+
+            $product = Product::find($productId);
+
+            if (! $product) {
+                return;
+            }
+
+            $available = $product->total_stock;
+
+            if ((int) $value > $available) {
+                $fail("Only {$available} unit(s) of {$product->name} are in stock.");
+            }
+        };
     }
 
     protected static function resetItemFields(callable $set, callable $get): void
@@ -303,6 +365,13 @@ class OrderResource extends Resource implements HasShieldPermissions
         $set('remaining_amount', number_format($remaining, 2, '.', ''));
     }
 
+    protected static function accountIdForPaymentMethod(?string $paymentMethod): ?int
+    {
+        return Account::query()
+            ->where('account_subtype', PaymentMethod::tryFrom($paymentMethod)?->accountSubtype() ?? AccountSubtype::Cash)
+            ->value('id');
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -311,9 +380,10 @@ class OrderResource extends Resource implements HasShieldPermissions
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
+                    ->formatStateUsing(fn ($state) => $state?->label())
                     ->colors([
-                        'warning' => 'processing',
-                        'success' => 'completed',
+                        'warning' => OrderStatus::Processing->value,
+                        'success' => OrderStatus::Completed->value,
                     ]),
                 Tables\Columns\TextColumn::make('subtotal')->label('Subtotal')->money('EGP'),
                 Tables\Columns\TextColumn::make('discount')->label('Discount')->money('EGP'),
@@ -334,11 +404,8 @@ class OrderResource extends Resource implements HasShieldPermissions
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->options([
-                        'processing' => 'Processing',
-                        'completed' => 'Completed',
-                    ])
-                    ->default('processing')
+                    ->options(collect(OrderStatus::cases())->mapWithKeys(fn ($case) => [$case->value => $case->label()]))
+                    ->default(OrderStatus::Processing->value)
                     ->native(false),
             ])
 
@@ -379,32 +446,46 @@ class OrderResource extends Resource implements HasShieldPermissions
                                 ->required()
                                 ->default(fn ($record) => $record->remaining_amount)
                                 ->rules(fn ($record) => [
-                                    'min:1',
+                                    'min:0.01',
                                     'max:'.$record->remaining_amount,
                                 ])
                                 ->helperText(fn ($record) => "Enter amount between 1 and {$record->remaining_amount}"),
+
+                            Forms\Components\Select::make('payment_method')
+                                ->label('Payment Method')
+                                ->options(collect(PaymentMethod::cases())->mapWithKeys(fn ($case) => [$case->value => $case->label()]))
+                                ->default(PaymentMethod::Cash->value)
+                                ->required()
+                                ->live()
+                                ->afterStateUpdated(fn (callable $set, $state) => $set('account_id', static::accountIdForPaymentMethod($state)))
+                                ->native(false),
+
+                            Forms\Components\Select::make('account_id')
+                                ->label('Received Into')
+                                ->options(fn () => Account::query()->where('is_bank_account', true)->pluck('name', 'id'))
+                                ->default(fn () => static::accountIdForPaymentMethod(PaymentMethod::Cash->value))
+                                ->disabled()
+                                ->dehydrated(true)
+                                ->required()
+                                ->native(false),
                         ]),
                     ])
-                    ->action(function ($record, array $data) {
-                        $payment = floatval($data['payment']);
-                        $record->paid_amount += $payment;
-                        $record->remaining_amount = max(0, $record->total_price - $record->paid_amount);
+                    ->action(function (Order $record, array $data) {
+                        $invoice = $record->invoice ?? app(RecordSaleAction::class)->handle($record);
 
-                        if ($record->remaining_amount == 0) {
-                            $record->status = 'completed';
-                        }
-                        Transaction::create([
-                            'type' => 'income',
-                            'amount' => $payment,
-                            'order_id' => $record->id,
-                            'user_id' => auth()->user()->id,
-                            'notes' => 'Order Payment',
-                            'transaction_date' => now(),
-                        ]);
-
-                        $record->save();
+                        app(RecordPaymentAction::class)->handle(
+                            accountId: (int) $data['account_id'],
+                            amount: (float) $data['payment'],
+                            paymentDate: now(),
+                            paymentMethod: PaymentMethod::from($data['payment_method']),
+                            customerId: $record->customer_id,
+                            allocations: [
+                                ['invoice_id' => $invoice->id, 'amount' => (float) $data['payment']],
+                            ],
+                            recordedByUserId: auth()->id(),
+                        );
                     })
-                    ->visible(fn ($record) => $record->remaining_amount > 0 && $record->status == 'processing' && $record->orderItems()->where('status', 'completed')->count() == $record->orderItems()->count()),
+                    ->visible(fn ($record) => (float) $record->remaining_amount > 0 && $record->status === OrderStatus::Processing && $record->orderItems()->where('status', 'completed')->count() == $record->orderItems()->count()),
                 Tables\Actions\ViewAction::make()->slideOver(),
                 Tables\Actions\EditAction::make()
                     ->visible(fn () => auth()->user()->can('edit_order')),

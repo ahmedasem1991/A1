@@ -205,6 +205,7 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                         ->minValue(1)
                         ->reactive()
                         ->required()
+                        ->rules([fn ($get, $record) => static::stockAvailabilityRule($get, $record)])
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                     Forms\Components\TextInput::make('price')
@@ -233,7 +234,8 @@ class OrderItemResource extends Resource implements HasShieldPermissions
             ->schema([
                 SpatieMediaLibraryFileUpload::make('original_image')
                     ->label('Image')
-                    ->collection('original_image'),
+                    ->collection('original_image')
+                    ->image(),
             ])
             ->afterValidation(function ($record, Get $get) {
                 $file = $get('original_image');
@@ -267,7 +269,8 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                         ->disabled(),
                     SpatieMediaLibraryFileUpload::make('enhanced_image')
                         ->label('Enhanced Image')
-                        ->collection('enhanced_image'),
+                        ->collection('enhanced_image')
+                        ->image(),
                 ]),
             ])
             ->afterValidation(function ($record, Get $get) {
@@ -409,6 +412,37 @@ class OrderItemResource extends Resource implements HasShieldPermissions
         }
 
         return optional(StudioImage::find($get('studio_image_id')))->name_price > 0;
+    }
+
+    protected static function stockAvailabilityRule(callable $get, ?OrderItem $record): \Closure
+    {
+        return function (string $attribute, $value, callable $fail) use ($get, $record) {
+            if ($get('category') !== 'product') {
+                return;
+            }
+
+            $productId = $get('product_id');
+
+            if (! $productId) {
+                return;
+            }
+
+            $product = Product::find($productId);
+
+            if (! $product) {
+                return;
+            }
+
+            $available = $product->total_stock;
+
+            if ($record && $record->exists && $record->product_id === $product->id) {
+                $available += $record->quantity;
+            }
+
+            if ((int) $value > $available) {
+                $fail("Only {$available} unit(s) of {$product->name} are in stock.");
+            }
+        };
     }
 
     protected static function resetItemFields(callable $set, callable $get): void

@@ -6,9 +6,11 @@ use App\Filament\Resources\ImageCardResource\Pages;
 use App\Models\ImageCard;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class ImageCardResource extends Resource
 {
@@ -27,16 +29,18 @@ class ImageCardResource extends Resource
             ->schema([
                 Forms\Components\TextInput::make('card_size')
                     ->required()
-                    ->maxLength(255),
+                    ->maxLength(255)
+                    ->unique(ignoreRecord: true),
                 Forms\Components\TextInput::make('price')
                     ->required()
                     ->numeric()
+                    ->minValue(0)
                     ->prefix('EGP'),
                 Forms\Components\TextInput::make('instant_price')
                     ->numeric()
                     ->label('Instant Price')
                     ->prefix('EGP')
-                    ->nullable(),
+                    ->minValue(0),
 
             ]);
     }
@@ -69,7 +73,17 @@ class ImageCardResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
+                            if ($records->contains(fn (ImageCard $record) => $record->orderItems()->exists())) {
+                                Notification::make()
+                                    ->title('Cannot delete: one or more image cards have order history')
+                                    ->danger()
+                                    ->send();
+
+                                $action->cancel();
+                            }
+                        }),
                 ]),
             ]);
     }

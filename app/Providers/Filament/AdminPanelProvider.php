@@ -62,6 +62,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->navigationGroups([
                 'Orders',
+                'Finance',
             ]);
     }
 }

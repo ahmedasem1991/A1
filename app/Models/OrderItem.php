@@ -50,10 +50,6 @@ class OrderItem extends Model implements HasMedia
 
         if (in_array($this->category, ['product', 'image_card']) && $this->status === 'creation') {
             $currentIndex = array_search('printing', self::$workflow);
-
-            if ($this->category === 'product') {
-                $this->deductStock();
-            }
         } else {
             $currentIndex++;
         }
@@ -62,14 +58,25 @@ class OrderItem extends Model implements HasMedia
         $this->save();
     }
 
-    protected function deductStock(): void
+    public function deductStock(int $quantity): void
     {
         $inventory = $this->product?->inventories()
-            ->wherePivot('stock_quantity', '>=', $this->quantity)
+            ->wherePivot('stock_quantity', '>=', $quantity)
             ->first();
 
+        if (! $inventory) {
+            throw new \App\Exceptions\InsufficientStockException($this->product, $quantity);
+        }
+
+        $inventory->pivot->decrement('stock_quantity', $quantity);
+    }
+
+    public function restoreStock(int $quantity): void
+    {
+        $inventory = $this->product?->inventories()->first();
+
         if ($inventory) {
-            $inventory->pivot->decrement('stock_quantity', $this->quantity);
+            $inventory->pivot->increment('stock_quantity', $quantity);
         }
     }
 }

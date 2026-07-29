@@ -6,10 +6,12 @@ use App\Filament\Resources\InventoryResource\Pages;
 use App\Models\Inventory;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class InventoryResource extends Resource
 {
@@ -22,7 +24,10 @@ class InventoryResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            TextInput::make('name')->required()->maxLength(255),
+            TextInput::make('name')
+                ->required()
+                ->maxLength(255)
+                ->unique(ignoreRecord: true),
         ]);
     }
 
@@ -38,10 +43,30 @@ class InventoryResource extends Resource
             ->filters([])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->before(function (Tables\Actions\DeleteAction $action, Inventory $record) {
+                        if ($record->products()->wherePivot('stock_quantity', '>', 0)->exists()) {
+                            Notification::make()
+                                ->title('Cannot delete: inventory still has stock')
+                                ->danger()
+                                ->send();
+
+                            $action->cancel();
+                        }
+                    }),
             ])
             ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\DeleteBulkAction::make()
+                    ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
+                        if ($records->contains(fn (Inventory $record) => $record->products()->wherePivot('stock_quantity', '>', 0)->exists())) {
+                            Notification::make()
+                                ->title('Cannot delete: one or more inventories still have stock')
+                                ->danger()
+                                ->send();
+
+                            $action->cancel();
+                        }
+                    }),
             ]);
     }
 

@@ -6,9 +6,11 @@ use App\Filament\Resources\StudioImageResource\Pages;
 use App\Models\StudioImage;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class StudioImageResource extends Resource
 {
@@ -26,28 +28,36 @@ class StudioImageResource extends Resource
         return $form->schema([
             Forms\Components\TextInput::make('image_size')
                 ->required()
+                ->maxLength(255)
+                ->unique(ignoreRecord: true)
                 ->label('Image Size'),
             Forms\Components\TextInput::make('image_count')
                 ->required()
                 ->numeric()
+                ->minValue(1)
                 ->label('Image Count'),
             Forms\Components\TextInput::make('price')
                 ->required()
                 ->numeric()
+                ->prefix('EGP')
+                ->minValue(0)
                 ->label('Base Price'),
             Forms\Components\TextInput::make('instant_price')
                 ->numeric()
-                ->label('Instant Price')
-                ->nullable(),
+                ->prefix('EGP')
+                ->minValue(0)
+                ->label('Instant Price'),
             Forms\Components\TextInput::make('soft_copy_price')
                 ->numeric()
-                ->label('Soft Copy Price')
-                ->nullable(),
+                ->minValue(0)
+                ->prefix('EGP')
+                ->label('Soft Copy Price'),
             Forms\Components\TextInput::make('name_price')
                 ->numeric()
-                ->label('+Name Price')
+                ->minValue(0)
                 ->default(5.00)
-                ->nullable(),
+                ->prefix('EGP')
+                ->label('+Name Price'),
         ]);
     }
 
@@ -71,7 +81,17 @@ class StudioImageResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
+                            if ($records->contains(fn (StudioImage $record) => $record->orderItems()->exists())) {
+                                Notification::make()
+                                    ->title('Cannot delete: one or more studio images have order history')
+                                    ->danger()
+                                    ->send();
+
+                                $action->cancel();
+                            }
+                        }),
                 ]),
             ]);
     }

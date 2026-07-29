@@ -2,16 +2,22 @@
 
 namespace Database\Seeders;
 
+use App\Actions\Finance\RecordExpenseAction;
+use App\Actions\Finance\RecordPaymentAction;
+use App\Actions\Finance\RecordSaleAction;
+use App\Enums\PaymentMethod;
+use App\Models\Account;
 use App\Models\Category;
+use App\Models\Customer;
 use App\Models\ImageCard;
 use App\Models\Inventory;
 use App\Models\InventoryProduct;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\StudioImage;
-use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +26,15 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $admin = User::factory()->create([
+            'name' => 'Admin User',
+            'email' => 'admin@example.com',
+            'is_admin' => true,
+            'password' => Hash::make('password'),
+        ]);
+        $this->call(ChartOfAccountsSeeder::class);
+
+        /**
         $this->command->info('🌱 Starting comprehensive database seeding...');
 
         // 1. Create Users with different roles
@@ -54,6 +69,12 @@ class DatabaseSeeder extends Seeder
         $allUsers = collect([$admin, $photographer, $editor, $cashier])->merge($users);
 
         $this->command->info("✓ Created {$allUsers->count()} users");
+
+        // 1b. Seed the Chart of Accounts
+        $this->command->info('📒 Seeding chart of accounts...');
+        $this->call(ChartOfAccountsSeeder::class);
+        $cashDrawer = Account::query()->where('is_bank_account', true)->firstOrFail();
+        $this->command->info('✓ Chart of accounts seeded');
 
         // 2. Create Product Categories
         $this->command->info('📦 Creating categories...');
@@ -121,8 +142,16 @@ class DatabaseSeeder extends Seeder
             $itemsCount = rand(1, 5);
             $subtotal = 0;
 
+            $customerName = fake()->name();
+            $customer = Customer::create([
+                'name' => $customerName,
+                'phone' => fake()->phoneNumber(),
+                'email' => fake()->safeEmail(),
+            ]);
+
             $order = Order::create([
-                'name' => 'Order #'.($i + 1).' - '.fake()->name(),
+                'name' => 'Order #'.($i + 1).' - '.$customerName,
+                'customer_id' => $customer->id,
                 'status' => $status,
                 'subtotal' => 0,
                 'discount' => fake()->boolean(30) ? fake()->randomFloat(2, 10, 100) : 0,
@@ -218,51 +247,58 @@ class DatabaseSeeder extends Seeder
             $order->update([
                 'subtotal' => $subtotal,
                 'total_price' => $totalPrice,
-                'paid_amount' => $paidAmount,
-                'remaining_amount' => $remainingAmount,
             ]);
 
-            // Create income transaction for paid amounts
-            if ($paidAmount > 0) {
-                Transaction::create([
-                    'type' => 'income',
-                    'amount' => $paidAmount,
-                    'transaction_date' => now()->subDays(rand(0, 30)),
-                    'user_id' => $allUsers->random()->id,
-                    'order_id' => $order->id,
-                    'notes' => $status === 'completed' ? 'Full payment - Order completed' : 'Partial payment',
-                ]);
+            // Post the sale to the ledger, then record the payment(s) received against it
+            if ($totalPrice > 0) {
+                $invoice = app(RecordSaleAction::class)->handle($order->fresh());
+
+                if ($paidAmount > 0) {
+                    app(RecordPaymentAction::class)->handle(
+                        accountId: $cashDrawer->id,
+                        amount: round($paidAmount, 2),
+                        paymentDate: now()->subDays(rand(0, 30)),
+                        paymentMethod: PaymentMethod::Cash,
+                        customerId: $customer->id,
+                        allocations: [['invoice_id' => $invoice->id, 'amount' => round($paidAmount, 2)]],
+                        notes: $status === 'completed' ? 'Full payment - Order completed' : 'Partial payment',
+                        recordedByUserId: $allUsers->random()->id,
+                    );
+                }
             }
         }
 
         $this->command->info("✓ Created {$orderCount} orders with items");
 
-        // 8. Create expense transactions
-        $this->command->info('💰 Creating expense transactions...');
+        // 8. Create expenses
+        $this->command->info('💰 Creating expenses...');
 
         $expenseCategories = [
             'Office Supplies',
             'Equipment Purchase',
-            'Rent Payment',
+            'Rent',
             'Utilities',
             'Marketing',
-            'Staff Salaries',
+            'Salaries',
             'Maintenance',
             'Software Subscription',
         ];
 
         for ($i = 0; $i < 25; $i++) {
-            Transaction::create([
-                'type' => 'expense',
-                'amount' => fake()->randomFloat(2, 50, 5000),
-                'transaction_date' => now()->subDays(rand(0, 60)),
-                'user_id' => $allUsers->random()->id,
-                'notes' => fake()->randomElement($expenseCategories),
-            ]);
+            $expenseAccount = Account::query()->where('name', fake()->randomElement($expenseCategories))->firstOrFail();
+
+            app(RecordExpenseAction::class)->handle(
+                expenseAccountId: $expenseAccount->id,
+                paidFromAccountId: $cashDrawer->id,
+                amount: fake()->randomFloat(2, 50, 5000),
+                expenseDate: now()->subDays(rand(0, 60)),
+                description: $expenseAccount->name,
+                recordedByUserId: $allUsers->random()->id,
+            );
         }
 
-        $totalTransactions = Transaction::count();
-        $this->command->info("✓ Created {$totalTransactions} transactions (income + expenses)");
+        $totalPayments = Payment::count();
+        $this->command->info("✓ Created {$totalPayments} payments (income + expenses)");
 
         // Summary
         $this->command->newLine();
@@ -279,7 +315,9 @@ class DatabaseSeeder extends Seeder
                 ['Products', Product::count()],
                 ['Orders', Order::count()],
                 ['Order Items', OrderItem::count()],
-                ['Transactions', Transaction::count()],
+                ['Customers', Customer::count()],
+                ['Accounts', Account::count()],
+                ['Payments', Payment::count()],
             ]
         );
         $this->command->newLine();
@@ -293,5 +331,6 @@ class DatabaseSeeder extends Seeder
                 ['cashier@example.com', 'password', 'Cashier'],
             ]
         );
+        **/
     }
 }

@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
-use App\Models\Category;
 use App\Models\Inventory;
 use App\Models\Product;
 use Filament\Forms\Components\FileUpload;
@@ -13,12 +12,14 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class ProductResource extends Resource
 {
@@ -31,14 +32,26 @@ class ProductResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            TextInput::make('name')->required(),
-            TextInput::make('sku')->unique(ignoreRecord: true),
-            Textarea::make('description')->rows(3),
-            TextInput::make('price')->numeric()->required(),
-            TextInput::make('base_price')->numeric()->nullable(),
+            TextInput::make('name')
+                ->required()
+                ->maxLength(255),
+            TextInput::make('sku')
+                ->maxLength(255)
+                ->unique(ignoreRecord: true),
+            Textarea::make('description')
+                ->rows(3)
+                ->maxLength(65535),
+            TextInput::make('price')
+                ->numeric()
+                ->required()
+                ->minValue(0)
+                ->prefix('EGP'),
+            TextInput::make('base_price')
+                ->numeric()
+                ->minValue(0)
+                ->prefix('EGP'),
             Select::make('category_id')
                 ->label('Product Category')
-                ->options(Category::all()->pluck('name', 'id'))
                 ->relationship('category', 'name')
                 ->searchable()
                 ->preload()
@@ -53,8 +66,7 @@ class ProductResource extends Resource
                         ->label('Image')
                         ->image()
                         ->directory('product-images')
-                        ->required()
-                        ->preserveFilenames(),
+                        ->required(),
                 ])
                 ->columns(1)
                 ->columnSpan('full')
@@ -65,7 +77,9 @@ class ProductResource extends Resource
                 ->label('Inventory Stock')
                 ->schema([
                     Select::make('inventory_id')  // Select Inventory
-                        ->options(Inventory::all()->pluck('name', 'id'))  // Get list of inventories
+                        ->options(fn (callable $get) => Inventory::query()
+                            ->whereNotIn('id', collect($get('../../inventoryProduct'))->pluck('inventory_id')->filter())
+                            ->pluck('name', 'id'))
                         ->searchable()
                         ->required()
                         ->label('Inventory'),
@@ -108,10 +122,30 @@ class ProductResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->before(function (Tables\Actions\DeleteAction $action, Product $record) {
+                        if ($record->orderItems()->exists()) {
+                            Notification::make()
+                                ->title('Cannot delete: product has order history')
+                                ->danger()
+                                ->send();
+
+                            $action->cancel();
+                        }
+                    }),
             ])
             ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\DeleteBulkAction::make()
+                    ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
+                        if ($records->contains(fn (Product $record) => $record->orderItems()->exists())) {
+                            Notification::make()
+                                ->title('Cannot delete: one or more products have order history')
+                                ->danger()
+                                ->send();
+
+                            $action->cancel();
+                        }
+                    }),
             ]);
     }
 
