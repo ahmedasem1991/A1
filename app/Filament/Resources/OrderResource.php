@@ -18,10 +18,8 @@ use App\Models\StudioImage;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms;
 use Filament\Forms\Form;
-use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section;
-use Filament\Infolists\Components\SpatieMediaLibraryImageEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Resource;
@@ -263,20 +261,7 @@ class OrderResource extends Resource implements HasShieldPermissions
                                     TextEntry::make('is_with_name')->label('+Name')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No'),
                                     TextEntry::make('price')->label('Total Price')->money('EGP'),
                                     TextEntry::make('created_at')->label('Created')->dateTime(),
-                                    SpatieMediaLibraryImageEntry::make('original_image')
-                                        ->label('Original Image')
-                                        ->collection('original_image')
-                                        ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null),
-                                    SpatieMediaLibraryImageEntry::make('enhanced_image')
-                                        ->label('Enhanced Image')
-                                        ->collection('enhanced_image')
-                                        ->visible(fn ($record) => $record->getFirstMedia('enhanced_image') !== null),
-                                    ImageEntry::make('product.images')
-                                        ->label('Product Images')
-                                        ->state(fn ($record) => $record->product?->images->pluck('image_path'))
-                                        ->stacked()
-                                        ->limit(5)
-                                        ->visible(fn ($record) => $record->category === 'product' && $record->product?->images->isNotEmpty()),
+                                    ...OrderItemResource::imageEntries(),
                                 ]),
                         ])
                         ->contained(false),

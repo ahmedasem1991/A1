@@ -26,6 +26,7 @@ use Filament\Tables;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
 
 class OrderItemResource extends Resource implements HasShieldPermissions
 {
@@ -48,6 +49,11 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                 static::stepCompleted(),
             ])
                 ->previousAction(fn (\Filament\Forms\Components\Actions\Action $action) => $action->disabled()->extraAttributes(['x-show' => 'false']))
+                ->nextAction(fn (\Filament\Forms\Components\Actions\Action $action) => $action->extraAttributes([
+                    'x-data' => 'wizardNextButton',
+                    'x-bind:disabled' => 'isUploading',
+                    'x-bind:class' => 'uploadingClass',
+                ]))
                 ->startOnStep(fn ($record) => array_search($record->status, OrderItem::$workflow) + 1)
                 ->columnSpan('full'),
         ]);
@@ -127,28 +133,46 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                         ->weight(FontWeight::Bold),
                 ]),
 
-            Section::make('Images')
-                ->columns(3)
-                ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null
-                    || $record->getFirstMedia('enhanced_image') !== null
-                    || $record->product?->images->isNotEmpty())
-                ->schema([
-                    SpatieMediaLibraryImageEntry::make('original_image')
-                        ->label('Original Image')
-                        ->collection('original_image')
-                        ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null),
-                    SpatieMediaLibraryImageEntry::make('enhanced_image')
-                        ->label('Enhanced Image')
-                        ->collection('enhanced_image')
-                        ->visible(fn ($record) => $record->getFirstMedia('enhanced_image') !== null),
-                    ImageEntry::make('product.images')
-                        ->label('Product Images')
-                        ->state(fn ($record) => $record->product?->images->pluck('image_path'))
-                        ->stacked()
-                        ->limit(5)
-                        ->visible(fn ($record) => $record->category === 'product' && $record->product?->images->isNotEmpty()),
-                ]),
+            static::imagesSection(),
         ]);
+    }
+
+    public static function imagesSection(): Section
+    {
+        return Section::make('Images')
+            ->columns(3)
+            ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null
+                || $record->getFirstMedia('enhanced_image') !== null
+                || $record->product?->images->isNotEmpty())
+            ->schema(static::imageEntries());
+    }
+
+    /**
+     * @return array<int, SpatieMediaLibraryImageEntry|ImageEntry>
+     */
+    public static function imageEntries(): array
+    {
+        return [
+            SpatieMediaLibraryImageEntry::make('original_image')
+                ->label('Original Image')
+                ->collection('original_image')
+                ->url(fn ($record) => $record->getFirstMediaUrl('original_image'), true)
+                ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null),
+            SpatieMediaLibraryImageEntry::make('enhanced_image')
+                ->label('Enhanced Image')
+                ->collection('enhanced_image')
+                ->url(fn ($record) => $record->getFirstMediaUrl('enhanced_image'), true)
+                ->visible(fn ($record) => $record->getFirstMedia('enhanced_image') !== null),
+            ImageEntry::make('product.images')
+                ->label('Product Images')
+                ->state(fn ($record) => $record->product?->images->pluck('image_path'))
+                ->stacked()
+                ->url(fn ($record) => $record->product?->images->first()?->image_path
+                    ? Storage::disk('public')->url($record->product->images->first()->image_path)
+                    : null, true)
+                ->limit(5)
+                ->visible(fn ($record) => $record->category === 'product' && $record->product?->images->isNotEmpty()),
+        ];
     }
 
     public static function table(Table $table): Table
