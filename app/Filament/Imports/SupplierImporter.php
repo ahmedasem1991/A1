@@ -20,7 +20,7 @@ class SupplierImporter extends Importer
             ImportColumn::make('phone')
                 ->rules(['max:255']),
             ImportColumn::make('email')
-                ->rules(['email', 'max:255']),
+                ->rules(['nullable', 'email', 'max:255']),
             ImportColumn::make('address'),
             ImportColumn::make('notes'),
         ];
