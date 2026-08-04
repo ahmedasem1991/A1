@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Exports\SupplierExporter;
+use App\Filament\Imports\SupplierImporter;
 use App\Filament\Resources\SupplierResource\Pages;
 use App\Models\Supplier;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
@@ -51,12 +53,19 @@ class SupplierResource extends Resource implements HasShieldPermissions
                 Tables\Columns\TextColumn::make('email'),
                 Tables\Columns\TextColumn::make('current_balance_cache')->label('Outstanding Balance')->money('EGP')->sortable(),
             ])
+            ->headerActions([
+                Tables\Actions\ImportAction::make()
+                    ->importer(SupplierImporter::class),
+                Tables\Actions\ExportAction::make()
+                    ->exporter(SupplierExporter::class),
+            ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
-                //
+                Tables\Actions\ExportBulkAction::make()
+                    ->exporter(SupplierExporter::class),
             ]);
     }
 
