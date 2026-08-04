@@ -52,7 +52,7 @@ class ImageCardResource extends Resource
                 Tables\Columns\TextColumn::make('card_size')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('price')
-                    ->money()
+                    ->money('EGP')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('instant_price')->money('EGP'),
 
