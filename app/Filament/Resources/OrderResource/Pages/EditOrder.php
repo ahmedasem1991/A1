@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\OrderResource\Pages;
 
+use App\Filament\Resources\OrderItemResource;
 use App\Filament\Resources\OrderResource;
 use App\Models\OrderItem;
 use Filament\Actions;
@@ -41,6 +42,11 @@ class EditOrder extends EditRecord
 
     protected function afterSave(): void
     {
+        $this->record->orderItems()
+            ->where('category', 'product')
+            ->where('status', 'creation')
+            ->update(['status' => 'completed']);
+
         $record = $this->record->refresh();
 
         $subtotal = $record->orderItems()->sum('price');
@@ -51,6 +57,15 @@ class EditOrder extends EditRecord
             'subtotal' => $subtotal,
             'total_price' => $total,
             'remaining_amount' => $remaining,
+        ]);
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return OrderItemResource::getUrl('index', [
+            'tableFilters' => [
+                'order_id' => ['value' => $this->record->id],
+            ],
         ]);
     }
 }

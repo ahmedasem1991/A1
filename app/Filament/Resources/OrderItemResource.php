@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderItemResource\Pages;
 use App\Models\ImageCard;
+use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\StudioImage;
@@ -13,7 +14,14 @@ use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
 use Filament\Forms\Components\Wizard;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Infolists\Components\IconEntry;
+use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\SpatieMediaLibraryImageEntry;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
 use Filament\Resources\Resource;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -69,6 +77,80 @@ class OrderItemResource extends Resource implements HasShieldPermissions
         $set('price', number_format($price * $quantity, 2, '.', ''));
     }
 
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([
+            Section::make('Order Item Details')
+                ->columns(4)
+                ->schema([
+                    TextEntry::make('id')->label('Item #'),
+                    TextEntry::make('order_id')
+                        ->label('Order')
+                        ->formatStateUsing(fn ($state, $record) => "#{$state} - {$record->order->name}")
+                        ->url(fn ($record) => OrderResource::getUrl('edit', ['record' => $record->order_id])),
+                    TextEntry::make('order.customer.name')->label('Customer'),
+                    TextEntry::make('status')
+                        ->badge()
+                        ->formatStateUsing(fn ($state) => ucfirst($state)),
+                    TextEntry::make('category')
+                        ->formatStateUsing(fn ($state) => ucfirst(str_replace('_', ' ', $state))),
+                    TextEntry::make('created_at')->label('Created')->dateTime(),
+                    TextEntry::make('updated_at')->label('Last Updated')->dateTime(),
+                ]),
+
+            Section::make('Item Specification')
+                ->columns(4)
+                ->schema([
+                    TextEntry::make('studioImage.image_size')
+                        ->label('Studio Image')
+                        ->visible(fn ($record) => $record->category === 'studio_image')
+                        ->placeholder('—'),
+                    TextEntry::make('imageCard.card_size')
+                        ->label('Image Card')
+                        ->visible(fn ($record) => $record->category === 'image_card')
+                        ->placeholder('—'),
+                    TextEntry::make('product.name')
+                        ->label('Product')
+                        ->visible(fn ($record) => $record->category === 'product')
+                        ->placeholder('—'),
+                    TextEntry::make('product.sku')
+                        ->label('SKU')
+                        ->visible(fn ($record) => $record->category === 'product')
+                        ->placeholder('—'),
+                    TextEntry::make('quantity'),
+                    IconEntry::make('is_instant')->label('Fawry')->boolean(),
+                    IconEntry::make('include_soft_copy')->label('Soft Copy')->boolean(),
+                    IconEntry::make('is_with_name')->label('+Name')->boolean(),
+                    TextEntry::make('price')
+                        ->label('Total Price')
+                        ->money('EGP')
+                        ->weight(FontWeight::Bold),
+                ]),
+
+            Section::make('Images')
+                ->columns(3)
+                ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null
+                    || $record->getFirstMedia('enhanced_image') !== null
+                    || $record->product?->images->isNotEmpty())
+                ->schema([
+                    SpatieMediaLibraryImageEntry::make('original_image')
+                        ->label('Original Image')
+                        ->collection('original_image')
+                        ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null),
+                    SpatieMediaLibraryImageEntry::make('enhanced_image')
+                        ->label('Enhanced Image')
+                        ->collection('enhanced_image')
+                        ->visible(fn ($record) => $record->getFirstMedia('enhanced_image') !== null),
+                    ImageEntry::make('product.images')
+                        ->label('Product Images')
+                        ->state(fn ($record) => $record->product?->images->pluck('image_path'))
+                        ->stacked()
+                        ->limit(5)
+                        ->visible(fn ($record) => $record->category === 'product' && $record->product?->images->isNotEmpty()),
+                ]),
+        ]);
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -113,8 +195,13 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                     ->label('Status')
                     ->native(false)
                     ->options(array_combine(OrderItem::$workflow, OrderItem::$workflow)),
+                SelectFilter::make('order_id')
+                    ->label('Order')
+                    ->native(false)
+                    ->options(fn () => Order::query()->get()->mapWithKeys(fn ($order) => [$order->id => "#{$order->id} - {$order->name}"])),
             ])
             ->actions([
+                Tables\Actions\ViewAction::make()->slideOver(),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
@@ -152,13 +239,13 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                             'image_card' => 'Image Card',
                             'product' => 'Product',
                         ])
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->required()
                         ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
                     Forms\Components\Select::make('product_id')
                         ->label('Product')
                         ->relationship('product', 'name')
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->required()
                         ->searchable()
                         ->visible(fn ($get) => $get('category') === 'product')
@@ -167,7 +254,7 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                     Forms\Components\Select::make('studio_image_id')
                         ->label('Studio Image')
                         ->options(StudioImage::all()->pluck('image_size', 'id'))
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->required()
                         ->visible(fn ($get) => $get('category') === 'studio_image')
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
@@ -175,26 +262,26 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                     Forms\Components\Select::make('image_card_id')
                         ->label('Image Card')
                         ->options(ImageCard::all()->pluck('card_size', 'id'))
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->required()
                         ->visible(fn ($get) => $get('category') === 'image_card')
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                     Forms\Components\Checkbox::make('is_instant')
                         ->label('Fawry')
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->visible(fn ($get) => static::shouldShowInstant($get))
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                     Forms\Components\Checkbox::make('include_soft_copy')
                         ->label('Soft Copy')
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->visible(fn ($get) => static::shouldShowSoftCopy($get))
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                     Forms\Components\Checkbox::make('is_with_name')
                         ->label('+Name')
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->visible(fn ($get) => static::shouldShowWithName($get))
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
@@ -203,7 +290,7 @@ class OrderItemResource extends Resource implements HasShieldPermissions
                         ->numeric()
                         ->default(1)
                         ->minValue(1)
-                        ->reactive()
+                        ->reactive()->debounce()
                         ->required()
                         ->rules([fn ($get, $record) => static::stockAvailabilityRule($get, $record)])
                         ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),

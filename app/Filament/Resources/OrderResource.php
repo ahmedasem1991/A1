@@ -18,6 +18,12 @@ use App\Models\StudioImage;
 use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\SpatieMediaLibraryImageEntry;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Filters\SelectFilter;
@@ -89,14 +95,14 @@ class OrderResource extends Resource implements HasShieldPermissions
                                     'image_card' => 'Image Card',
                                     'product' => 'Product',
                                 ])
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->required()
                                 ->afterStateUpdated(fn ($set, $get) => static::resetItemFields($set, $get)),
 
                             Forms\Components\Select::make('product_category_id')
                                 ->label('Product Category')
                                 ->options(Category::all()->pluck('name', 'id'))
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->searchable()
                                 ->preload()
                                 ->visible(fn ($get) => $get('category') === 'product')
@@ -119,7 +125,7 @@ class OrderResource extends Resource implements HasShieldPermissions
                                         return [$product->id => $displayName];
                                     });
                                 })
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->required()
                                 ->searchable()
                                 ->visible(fn ($get) => $get('category') === 'product')
@@ -128,7 +134,7 @@ class OrderResource extends Resource implements HasShieldPermissions
                             Forms\Components\Select::make('studio_image_id')
                                 ->label('Studio Image')
                                 ->options(StudioImage::all()->pluck('image_size', 'id'))
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->required()
                                 ->visible(fn ($get) => $get('category') === 'studio_image')
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
@@ -136,26 +142,26 @@ class OrderResource extends Resource implements HasShieldPermissions
                             Forms\Components\Select::make('image_card_id')
                                 ->label('Image Card')
                                 ->options(ImageCard::all()->pluck('card_size', 'id'))
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->required()
                                 ->visible(fn ($get) => $get('category') === 'image_card')
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                             Forms\Components\Checkbox::make('is_instant')
                                 ->label('Fawry')
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->visible(fn ($get) => static::shouldShowInstant($get))
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                             Forms\Components\Checkbox::make('include_soft_copy')
                                 ->label('Soft Copy')
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->visible(fn ($get) => static::shouldShowSoftCopy($get))
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
                             Forms\Components\Checkbox::make('is_with_name')
                                 ->label('+Name')
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->visible(fn ($get) => static::shouldShowWithName($get))
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
 
@@ -164,7 +170,7 @@ class OrderResource extends Resource implements HasShieldPermissions
                                 ->numeric()
                                 ->default(1)
                                 ->minValue(1)
-                                ->reactive()
+                                ->reactive()->debounce()
                                 ->required()
                                 ->rules([fn ($get) => static::stockAvailabilityRule($get)])
                                 ->afterStateUpdated(fn ($set, $get) => static::updateItemData($set, $get)),
@@ -182,15 +188,110 @@ class OrderResource extends Resource implements HasShieldPermissions
             Forms\Components\TextInput::make('subtotal')->numeric()->disabled()->dehydrated(true),
             Forms\Components\TextInput::make('discount')->numeric()->default(0)->minValue(0)
                 ->maxValue(fn (callable $get) => $get('subtotal') ?? 0)
-                ->reactive()
+                ->reactive()->debounce()
                 ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
             Forms\Components\TextInput::make('total_price')->numeric()->disabled()->dehydrated(true),
             Forms\Components\TextInput::make('paid_amount')->numeric()->default(0)->minValue(0)
                 ->maxValue(fn (callable $get) => $get('total_price') ?? 0)
-                ->reactive()
+                ->reactive()->debounce()
                 ->afterStateUpdated(fn ($state, $set, $get) => static::updateOrderTotals($set, $get)),
             Forms\Components\TextInput::make('remaining_amount')->numeric()->disabled()->dehydrated(true),
         ]);
+    }
+
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([
+            Section::make('Order Details')
+                ->columns(4)
+                ->schema([
+                    TextEntry::make('id')->label('Order #'),
+                    TextEntry::make('customer.name')->label('Customer'),
+                    TextEntry::make('customer.phone')->label('Phone')->placeholder('—'),
+                    TextEntry::make('status')
+                        ->badge()
+                        ->formatStateUsing(fn ($state) => $state?->label())
+                        ->colors([
+                            'warning' => OrderStatus::Processing->value,
+                            'success' => OrderStatus::Completed->value,
+                        ]),
+                    TextEntry::make('created_at')->label('Placed At')->dateTime(),
+                    TextEntry::make('updated_at')->label('Last Updated')->dateTime(),
+                ]),
+
+            Section::make('Financials')
+                ->columns(5)
+                ->schema([
+                    TextEntry::make('subtotal')->money('EGP'),
+                    TextEntry::make('discount')->money('EGP'),
+                    TextEntry::make('total_price')->label('Total')->money('EGP'),
+                    TextEntry::make('paid_amount')->label('Paid')->money('EGP'),
+                    TextEntry::make('remaining_amount')
+                        ->label('Remaining')
+                        ->money('EGP')
+                        ->color(fn ($state) => (float) $state > 0 ? 'danger' : 'success'),
+                ]),
+
+            Section::make('Invoice')
+                ->columns(4)
+                ->visible(fn ($record) => $record->invoice !== null)
+                ->schema([
+                    TextEntry::make('invoice.invoice_number')->label('Invoice #'),
+                    TextEntry::make('invoice.status')
+                        ->label('Invoice Status')
+                        ->badge()
+                        ->formatStateUsing(fn ($state) => $state?->label()),
+                    TextEntry::make('invoice.invoice_date')->label('Invoice Date')->date(),
+                    TextEntry::make('invoice.balance_cache')->label('Invoice Balance')->money('EGP'),
+                ]),
+
+            Section::make('Order Items')
+                ->schema([
+                    RepeatableEntry::make('orderItems')
+                        ->label('')
+                        ->schema([
+                            Section::make(fn ($record) => '#'.$record->id.' — '.static::orderItemTitle($record))
+                                ->columns(5)
+                                ->schema([
+                                    TextEntry::make('category')
+                                        ->formatStateUsing(fn ($state) => ucfirst(str_replace('_', ' ', $state))),
+                                    TextEntry::make('status')
+                                        ->badge(),
+                                    TextEntry::make('quantity'),
+                                    TextEntry::make('is_instant')->label('Fawry')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No'),
+                                    TextEntry::make('include_soft_copy')->label('Soft Copy')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No'),
+                                    TextEntry::make('is_with_name')->label('+Name')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No'),
+                                    TextEntry::make('price')->label('Total Price')->money('EGP'),
+                                    TextEntry::make('created_at')->label('Created')->dateTime(),
+                                    SpatieMediaLibraryImageEntry::make('original_image')
+                                        ->label('Original Image')
+                                        ->collection('original_image')
+                                        ->visible(fn ($record) => $record->getFirstMedia('original_image') !== null),
+                                    SpatieMediaLibraryImageEntry::make('enhanced_image')
+                                        ->label('Enhanced Image')
+                                        ->collection('enhanced_image')
+                                        ->visible(fn ($record) => $record->getFirstMedia('enhanced_image') !== null),
+                                    ImageEntry::make('product.images')
+                                        ->label('Product Images')
+                                        ->state(fn ($record) => $record->product?->images->pluck('image_path'))
+                                        ->stacked()
+                                        ->limit(5)
+                                        ->visible(fn ($record) => $record->category === 'product' && $record->product?->images->isNotEmpty()),
+                                ]),
+                        ])
+                        ->contained(false),
+                ]),
+        ]);
+    }
+
+    protected static function orderItemTitle(\App\Models\OrderItem $item): string
+    {
+        return match ($item->category) {
+            'studio_image' => 'Studio Image'.($item->studioImage ? ' - '.$item->studioImage->image_size : ''),
+            'image_card' => 'Image Card'.($item->imageCard ? ' - '.$item->imageCard->card_size : ''),
+            'product' => 'Product'.($item->product ? ' - '.$item->product->name : ''),
+            default => 'Item',
+        };
     }
 
     protected static function stockAvailabilityRule(callable $get): \Closure
@@ -513,7 +614,7 @@ class OrderResource extends Resource implements HasShieldPermissions
 
     public static function canEdit(Model $record): bool
     {
-        return auth()->user()->can('edit_order');
+        return false;
     }
 
     public static function canDelete(Model $record): bool
