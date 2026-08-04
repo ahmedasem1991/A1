@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Exports\CategoryExporter;
+use App\Filament\Imports\CategoryImporter;
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
 use Filament\Forms;
@@ -42,11 +44,19 @@ class CategoryResource extends Resource
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             ->filters([])
+            ->headerActions([
+                Tables\Actions\ImportAction::make()
+                    ->importer(CategoryImporter::class),
+                Tables\Actions\ExportAction::make()
+                    ->exporter(CategoryExporter::class),
+            ])
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
+                Tables\Actions\ExportBulkAction::make()
+                    ->exporter(CategoryExporter::class),
                 Tables\Actions\DeleteBulkAction::make(),
             ]);
     }

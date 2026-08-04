@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Exports\StudioImageExporter;
+use App\Filament\Imports\StudioImageImporter;
 use App\Filament\Resources\StudioImageResource\Pages;
 use App\Models\StudioImage;
 use Filament\Forms;
@@ -75,12 +77,20 @@ class StudioImageResource extends Resource
             ->filters([
                 //
             ])
+            ->headerActions([
+                Tables\Actions\ImportAction::make()
+                    ->importer(StudioImageImporter::class),
+                Tables\Actions\ExportAction::make()
+                    ->exporter(StudioImageExporter::class),
+            ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\ExportBulkAction::make()
+                        ->exporter(StudioImageExporter::class),
                     Tables\Actions\DeleteBulkAction::make()
                         ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
                             if ($records->contains(fn (StudioImage $record) => $record->orderItems()->exists())) {

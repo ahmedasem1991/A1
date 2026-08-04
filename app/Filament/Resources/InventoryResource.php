@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Exports\InventoryExporter;
+use App\Filament\Imports\InventoryImporter;
 use App\Filament\Resources\InventoryResource\Pages;
 use App\Models\Inventory;
 use Filament\Forms\Components\TextInput;
@@ -41,6 +43,12 @@ class InventoryResource extends Resource
             TextColumn::make('created_at')->dateTime(),
         ])
             ->filters([])
+            ->headerActions([
+                Tables\Actions\ImportAction::make()
+                    ->importer(InventoryImporter::class),
+                Tables\Actions\ExportAction::make()
+                    ->exporter(InventoryExporter::class),
+            ])
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
@@ -56,6 +64,8 @@ class InventoryResource extends Resource
                     }),
             ])
             ->bulkActions([
+                Tables\Actions\ExportBulkAction::make()
+                    ->exporter(InventoryExporter::class),
                 Tables\Actions\DeleteBulkAction::make()
                     ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
                         if ($records->contains(fn (Inventory $record) => $record->products()->wherePivot('stock_quantity', '>', 0)->exists())) {

@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Exports\ImageCardExporter;
+use App\Filament\Imports\ImageCardImporter;
 use App\Filament\Resources\ImageCardResource\Pages;
 use App\Models\ImageCard;
 use Filament\Forms;
@@ -68,11 +70,19 @@ class ImageCardResource extends Resource
             ->filters([
                 //
             ])
+            ->headerActions([
+                Tables\Actions\ImportAction::make()
+                    ->importer(ImageCardImporter::class),
+                Tables\Actions\ExportAction::make()
+                    ->exporter(ImageCardExporter::class),
+            ])
             ->actions([
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\ExportBulkAction::make()
+                        ->exporter(ImageCardExporter::class),
                     Tables\Actions\DeleteBulkAction::make()
                         ->before(function (Tables\Actions\DeleteBulkAction $action, Collection $records) {
                             if ($records->contains(fn (ImageCard $record) => $record->orderItems()->exists())) {
